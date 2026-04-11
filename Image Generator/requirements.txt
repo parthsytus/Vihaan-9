@@ -1,0 +1,5 @@
+potassium
+diffusers
+transformers
+accelerate
+torch
