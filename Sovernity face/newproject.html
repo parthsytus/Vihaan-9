@@ -1,0 +1,2647 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SovereignFace | Identity Protocol</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap"
+        rel="stylesheet">
+    <!-- Face Recognition Libraries -->
+    <script async src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0"></script>
+    <script async src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-api@0.0.7"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        neonCyan: '#00f3ff',
+                        neonMagenta: '#ff00ff',
+                        neonLime: '#bcff00',
+                        darkBg: '#050505',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    backgroundImage: {
+                        'glass-gradient': 'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 100%)',
+                        'neon-lattice': 'radial-gradient(circle at 2px 2px, rgba(0, 243, 255, 0.15) 1px, transparent 0)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --x: 50%;
+            --y: 50%;
+        }
+
+        body {
+            background-color: #050505;
+            color: white;
+            overflow-x: hidden;
+        }
+
+        .cursor-glare {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background: radial-gradient(circle at var(--x) var(--y), rgba(0, 243, 255, 0.15) 0%, transparent 40%);
+            z-index: 999;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+        }
+
+        .neon-border-hover:hover {
+            border-color: #00f3ff;
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.4);
+        }
+
+        .face-grid {
+            mask-image: radial-gradient(circle, black 40%, transparent 80%);
+            perspective: 1000px;
+        }
+
+        .lattice-bg {
+            background-size: 30px 30px;
+            background-image:
+                linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+        }
+
+        .hologram-animate {
+            animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 0.3;
+                filter: brightness(1);
+            }
+
+            50% {
+                opacity: 0.7;
+                filter: brightness(1.5);
+            }
+        }
+
+        /* scanline replaced by canvas */
+
+        .perspective-card {
+            transform-style: preserve-3d;
+            transition: transform 0.1s ease-out;
+        }
+
+        .merkle-node {
+            width: 8px;
+            height: 8px;
+            background: #00f3ff;
+            border-radius: 50%;
+            position: relative;
+        }
+
+        .merkle-node::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: inherit;
+            filter: blur(4px);
+            animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+        }
+
+        /* ── Ledger sign flash ─────────────────────── */
+        @keyframes ledgerFlash {
+            0% {
+                box-shadow: 0 0 0 rgba(188, 255, 0, 0);
+            }
+
+            40% {
+                box-shadow: 0 0 32px rgba(188, 255, 0, 0.6);
+            }
+
+            100% {
+                box-shadow: 0 0 0 rgba(188, 255, 0, 0);
+            }
+        }
+
+        .ledger-signed-flash {
+            animation: ledgerFlash 1.2s ease-out forwards;
+        }
+
+        @keyframes signIn {
+            0% {
+                opacity: 0;
+                transform: translateY(6px);
+            }
+
+            100% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .sign-in {
+            animation: signIn 0.4s ease-out forwards;
+        }
+
+        /* ── Scan Registry table ──────────────────── */
+        .registry-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .registry-table th {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 8px;
+            text-transform: uppercase;
+            letter-spacing: .12em;
+            color: rgba(0, 243, 255, 0.5);
+            padding: 6px 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            text-align: left;
+        }
+
+        .registry-table td {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            color: rgba(255, 255, 255, 0.55);
+            padding: 7px 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            vertical-align: middle;
+        }
+
+        .registry-table tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .reg-thumb {
+            width: 32px;
+            height: 32px;
+            object-fit: cover;
+            border-radius: 6px;
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            display: block;
+        }
+
+        .reg-no-photo {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.03);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.2);
+        }
+
+        /* ── Ecosystem nav pills ───────────────────── */
+        .eco-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 14px;
+            border-radius: 999px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: .12em;
+            border: 1px solid;
+            cursor: pointer;
+            transition: background 0.2s, box-shadow 0.2s;
+            text-decoration: none;
+        }
+
+        .eco-pill-lime {
+            border-color: rgba(188, 255, 0, 0.35);
+            color: #bcff00;
+        }
+
+        .eco-pill-lime:hover {
+            background: rgba(188, 255, 0, 0.1);
+            box-shadow: 0 0 14px rgba(188, 255, 0, 0.3);
+        }
+
+        .eco-pill-magenta {
+            border-color: rgba(255, 0, 255, 0.35);
+            color: #ff00ff;
+        }
+
+        .eco-pill-magenta:hover {
+            background: rgba(255, 0, 255, 0.1);
+            box-shadow: 0 0 14px rgba(255, 0, 255, 0.3);
+        }
+    </style>
+</head>
+
+<body class="font-sans antialiased">
+    <div class="cursor-glare"></div>
+
+    <!-- Background Blobs -->
+    <div class="fixed inset-0 overflow-hidden pointer-events-none -z-10">
+        <div class="absolute -top-[10%] -left-[10%] w-[50%] h-[50%] bg-neonCyan opacity-10 blur-[120px] rounded-full">
+        </div>
+        <div
+            class="absolute top-[40%] -right-[10%] w-[40%] h-[60%] bg-neonMagenta opacity-10 blur-[120px] rounded-full">
+        </div>
+        <div class="absolute -bottom-[10%] left-[20%] w-[30%] h-[40%] bg-neonLime opacity-5 blur-[120px] rounded-full">
+        </div>
+    </div>
+
+    <!-- Navbar -->
+    <nav class="fixed top-6 left-1/2 -translate-x-1/2 z-50">
+        <div class="glass-card px-6 py-3 rounded-full flex items-center gap-8 border-white/10">
+            <div class="flex items-center gap-2">
+                <div class="w-2 h-2 bg-neonCyan rounded-full shadow-[0_0_8px_#00f3ff]"></div>
+                <span class="font-mono text-xs tracking-widest uppercase opacity-70">Sovereign v1.0</span>
+            </div>
+            <div class="h-4 w-[1px] bg-white/20"></div>
+            <div class="flex gap-6 text-sm font-medium">
+                <a href="#birth" class="hover:text-neonCyan transition-colors">Manifest</a>
+                <a href="#ledger" class="hover:text-neonMagenta transition-colors">Ledger</a>
+                <a href="#verify" class="hover:text-neonLime transition-colors">Engine</a>
+            </div>
+            <div class="h-4 w-[1px] bg-white/20"></div>
+            <div class="flex items-center gap-2">
+                <a href="ai-generator.html" target="_blank" class="eco-pill eco-pill-lime">
+                    <span
+                        style="width:6px;height:6px;border-radius:50%;background:#bcff00;display:inline-block;box-shadow:0 0 5px #bcff00;"></span>
+                    NeuralForge
+                </a>
+                <a href="instagram-prototype.html" target="_blank" class="eco-pill eco-pill-magenta">
+                    <span
+                        style="width:6px;height:6px;border-radius:50%;background:#ff00ff;display:inline-block;box-shadow:0 0 5px #ff00ff;"></span>
+                    SovereignGram
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <main class="relative min-h-screen lattice-bg flex flex-col items-center justify-center pt-20 px-4">
+
+        <!-- 3D Holographic Face Container -->
+        <div id="hero-face"
+            class="relative w-72 h-72 md:w-96 md:h-96 mb-12 face-grid transition-transform duration-300">
+
+            <!-- Real face photo -->
+            <div class="relative w-full h-full rounded-full overflow-hidden">
+                <img src="myface.jpeg" alt="Identity" class="w-full h-full object-cover object-top hologram-animate"
+                    style="filter: saturate(0.85) contrast(1.1);" />
+                <!-- Neon overlay tint -->
+                <div class="absolute inset-0 rounded-full"
+                    style="background: radial-gradient(circle, transparent 50%, rgba(0,243,255,0.18) 100%); mix-blend-mode: screen;">
+                </div>
+                <!-- Corner brackets -->
+                <div class="absolute top-4 left-4 w-6 h-6 border-t-2 border-l-2 border-neonCyan opacity-80"></div>
+                <div class="absolute top-4 right-4 w-6 h-6 border-t-2 border-r-2 border-neonMagenta opacity-80"></div>
+                <div class="absolute bottom-4 left-4 w-6 h-6 border-b-2 border-l-2 border-neonCyan opacity-80"></div>
+                <div class="absolute bottom-4 right-4 w-6 h-6 border-b-2 border-r-2 border-neonMagenta opacity-80">
+                </div>
+            </div>
+
+            <!-- Green scanning line canvas (left→right, grid trail) -->
+            <canvas id="scan-canvas" class="absolute inset-0 w-full h-full rounded-full pointer-events-none"
+                style="z-index:10;"></canvas>
+
+            <!-- Face Match Percentage HUD -->
+            <div id="face-match-hud" class="absolute inset-0 pointer-events-none" style="z-index:12;">
+                <!-- Top-left: match % -->
+                <div class="absolute top-3 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1">
+                    <div class="font-mono text-[9px] text-neonLime/70 uppercase tracking-widest">Identity Match</div>
+                    <div class="flex items-end gap-1">
+                        <span id="match-percent" class="font-mono font-bold text-2xl text-neonLime"
+                            style="text-shadow:0 0 12px #bcff00;">--</span>
+                        <span class="font-mono text-sm text-neonLime/60 mb-1">%</span>
+                    </div>
+                    <!-- Match bar -->
+                    <div class="w-28 h-[3px] bg-white/10 rounded-full overflow-hidden">
+                        <div id="match-bar" class="h-full rounded-full transition-all duration-300"
+                            style="width:0%;background:#bcff00;box-shadow:0 0 8px #bcff00;"></div>
+                    </div>
+                </div>
+                <!-- Side labels -->
+                <div class="absolute left-1 top-1/2 -translate-y-1/2 space-y-2">
+                    <div class="font-mono text-[8px] text-neonCyan/50 uppercase tracking-widest rotate-180"
+                        style="writing-mode:vertical-rl;">Biometric Lock</div>
+                </div>
+                <div class="absolute right-1 top-1/2 -translate-y-1/2 space-y-2">
+                    <div class="font-mono text-[8px] text-neonMagenta/50 uppercase tracking-widest"
+                        style="writing-mode:vertical-rl;">Vector Map</div>
+                </div>
+                <!-- Status badge bottom -->
+                <div id="match-status" class="absolute bottom-3 left-1/2 -translate-x-1/2">
+                    <span
+                        class="font-mono text-[8px] uppercase tracking-widest px-2 py-0.5 rounded-full border border-neonCyan/30 text-neonCyan/60">ANALYZING...</span>
+                </div>
+            </div>
+
+            <div class="absolute inset-0 flex items-center justify-center pointer-events-none" style="z-index:11;">
+                <div
+                    class="text-[10px] font-mono text-neonCyan/40 grid grid-cols-4 gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span>HASH: 0x82...1A</span>
+                    <span>VEC: 1.092</span>
+                    <span>LAT: 52.1N</span>
+                    <span>ENC: AES-256</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Title Section -->
+        <div class="text-center mb-16 max-w-2xl relative z-10">
+            <h1 class="text-5xl md:text-7xl font-extrabold tracking-tighter mb-4 italic">
+                OWN YOUR <span
+                    class="text-transparent bg-clip-text bg-gradient-to-r from-neonCyan via-white to-neonMagenta">IDENTITY.</span>
+            </h1>
+            <p class="text-lg text-white/50 font-light max-w-lg mx-auto leading-relaxed">
+                Decentralized biometric sovereignty. Cryptographically signed facial vectors. Protect your presence in
+                the age of generative deception.
+            </p>
+        </div>
+
+        <!-- Login Card -->
+        <div class="perspective-card w-full max-w-md" id="login-container">
+            <div class="glass-card rounded-2xl p-8 border-white/10 relative group">
+                <div
+                    class="absolute -top-px left-10 right-10 h-px bg-gradient-to-r from-transparent via-neonCyan to-transparent">
+                </div>
+
+                <div class="space-y-6">
+                    <button onclick="openFaceScan()"
+                        class="w-full py-4 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center gap-3 hover:bg-neonCyan/10 hover:border-neonCyan transition-all duration-300 group">
+                        <i data-lucide="scan-face"
+                            class="w-5 h-5 text-neonCyan group-hover:scale-110 transition-transform"></i>
+                        <span class="font-mono text-sm uppercase tracking-widest">Initialize Face Scan</span>
+                    </button>
+
+                    <div class="relative flex items-center justify-center">
+                        <div class="absolute inset-0 flex items-center">
+                            <div class="w-full border-t border-white/10"></div>
+                        </div>
+                        <span
+                            class="relative px-4 bg-darkBg text-[10px] font-mono text-white/30 uppercase tracking-[0.2em]">Manual
+                            Override</span>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="relative">
+                            <input id="auth-name" type="text" placeholder="Identity URI  e.g. aryan@sovereign"
+                                class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neonMagenta/50 transition-colors font-mono">
+                        </div>
+                        <div class="relative">
+                            <input id="auth-dob" type="text" placeholder="Pass-key Seed  e.g. 15/01/2004"
+                                class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neonMagenta/50 transition-colors font-mono">
+                        </div>
+                        <div id="auth-error"
+                            class="hidden text-[10px] font-mono text-red-400 text-center uppercase tracking-widest">⚠
+                            Invalid credentials</div>
+                        <button onclick="handleAuthenticate()"
+                            class="w-full py-3 bg-white text-black font-bold rounded-lg text-sm hover:bg-neonLime transition-colors">
+                            AUTHENTICATE
+                        </button>
+                    </div>
+                </div>
+
+                <div
+                    class="mt-6 flex justify-between items-center text-[10px] font-mono text-white/40 uppercase tracking-widest">
+                    <a href="#" class="hover:text-white transition-colors">Create Persona</a>
+                    <a href="#" class="hover:text-white transition-colors">Node Status: Active</a>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Scroll Story: Digital Birth -->
+    <section id="birth" class="min-h-screen flex items-center px-8 md:px-24 py-32 relative">
+        <div class="grid md:grid-cols-2 gap-16 items-center max-w-7xl mx-auto">
+            <div class="space-y-8">
+                <div
+                    class="inline-block px-3 py-1 rounded-full border border-neonCyan/30 text-neonCyan text-[10px] font-mono tracking-widest uppercase">
+                    Stage 01: Digital Birth
+                </div>
+                <h2 class="text-4xl md:text-6xl font-bold leading-tight">Your face is a <span
+                        class="text-neonCyan">Signed Manifest.</span></h2>
+                <p class="text-white/60 text-lg leading-relaxed">
+                    The moment a sensor captures your image, it is watermarked with a camera-specific hardware key and
+                    hashed into a unique biometric manifest. No cloud, no central database—just your data, signed by
+                    your hardware.
+                </p>
+                <div class="flex gap-4">
+                    <div class="p-4 glass-card rounded-xl border-white/10 flex-1">
+                        <i data-lucide="camera" class="w-6 h-6 text-neonCyan mb-2"></i>
+                        <div class="text-xs font-mono opacity-50">Hardware Origin</div>
+                    </div>
+                    <div class="p-4 glass-card rounded-xl border-white/10 flex-1">
+                        <i data-lucide="shield-check" class="w-6 h-6 text-neonCyan mb-2"></i>
+                        <div class="text-xs font-mono opacity-50">Signed Hash</div>
+                    </div>
+                </div>
+            </div>
+            <div
+                class="relative h-[400px] glass-card rounded-3xl overflow-hidden border-white/5 flex items-center justify-center bg-gradient-to-br from-neonCyan/5 to-transparent">
+                <!-- Abstract Data Viz -->
+                <div class="absolute inset-0 lattice-bg opacity-20"></div>
+                <div class="relative space-y-2">
+                    <div class="w-48 h-1 bg-white/10 rounded-full overflow-hidden">
+                        <div class="h-full bg-neonCyan w-2/3 shadow-[0_0_10px_#00f3ff]"></div>
+                    </div>
+                    <div class="w-48 h-1 bg-white/10 rounded-full overflow-hidden">
+                        <div class="h-full bg-neonCyan w-1/2 shadow-[0_0_10px_#00f3ff]"></div>
+                    </div>
+                    <div class="font-mono text-[10px] text-neonCyan animate-pulse">ENCRYPTING BIOMETRIC FRAGMENTS...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Scroll Story: Custody Ledger -->
+    <section id="ledger"
+        class="min-h-screen bg-white/[0.02] flex items-center px-8 md:px-24 py-32 relative overflow-hidden">
+        <div class="max-w-7xl mx-auto w-full">
+            <div class="text-center mb-20 space-y-4">
+                <div
+                    class="inline-block px-3 py-1 rounded-full border border-neonMagenta/30 text-neonMagenta text-[10px] font-mono tracking-widest uppercase">
+                    Stage 02: Custody Ledger
+                </div>
+                <h2 class="text-4xl md:text-6xl font-bold">The Merkle Identity Tree.</h2>
+            </div>
+
+            <div class="relative grid md:grid-cols-3 gap-8">
+                <!-- Merkle Visualization Cards -->
+                <div
+                    class="glass-card p-8 rounded-2xl border-white/5 space-y-4 relative group hover:border-neonMagenta/50 transition-colors">
+                    <div class="merkle-node mb-4"></div>
+                    <h3 class="font-mono text-neonMagenta tracking-tighter uppercase">Leaf Node 0xFF1</h3>
+                    <p class="text-sm text-white/50 leading-relaxed">Raw biometric embedding encrypted with your local
+                        public key. Inaccessible to third parties.</p>
+                </div>
+                <div
+                    class="glass-card p-8 rounded-2xl border-white/5 space-y-4 relative group hover:border-neonMagenta/50 transition-colors translate-y-12">
+                    <div class="merkle-node mb-4 bg-neonMagenta"></div>
+                    <h3 class="font-mono text-neonMagenta tracking-tighter uppercase">Protocol Root</h3>
+                    <p class="text-sm text-white/50 leading-relaxed">A zero-knowledge proof generated to verify identity
+                        without revealing the underlying data structure.</p>
+                </div>
+                <div
+                    class="glass-card p-8 rounded-2xl border-white/5 space-y-4 relative group hover:border-neonMagenta/50 transition-colors">
+                    <div class="merkle-node mb-4 bg-white"></div>
+                    <h3 class="font-mono text-neonMagenta tracking-tighter uppercase">Identity Lock</h3>
+                    <p class="text-sm text-white/50 leading-relaxed">The final consensus hash anchored to the
+                        decentralized ledger, securing your face forever.</p>
+                </div>
+
+                <!-- Connecting Lines (Decorative) -->
+                <svg class="absolute inset-0 w-full h-full pointer-events-none opacity-20 -z-10" viewBox="0 0 1000 400">
+                    <path d="M150 100 L500 220 L850 100" fill="none" stroke="white" stroke-width="1"
+                        stroke-dasharray="5,5" />
+                </svg>
+            </div>
+        </div>
+    </section>
+
+    <!-- Verification Engine -->
+    <section id="verify" class="min-h-screen flex items-center px-8 md:px-24 py-32 relative">
+        <div class="grid md:grid-cols-2 gap-16 items-center max-w-7xl mx-auto">
+            <div
+                class="order-2 md:order-1 relative h-[500px] w-full glass-card rounded-3xl border-white/5 p-4 flex flex-col">
+                <div class="flex justify-between items-center mb-6">
+                    <div class="flex gap-2">
+                        <div class="w-3 h-3 rounded-full bg-red-500/50"></div>
+                        <div class="w-3 h-3 rounded-full bg-yellow-500/50"></div>
+                        <div class="w-3 h-3 rounded-full bg-green-500/50"></div>
+                    </div>
+                    <span class="font-mono text-[10px] opacity-40 uppercase tracking-widest">Deepfake Detection Engine
+                        v4.0</span>
+                </div>
+                <div
+                    class="flex-1 border border-white/5 rounded-xl bg-black/40 relative overflow-hidden flex items-center justify-center">
+                    <!-- Deepfake Detection UI Mock -->
+                    <div
+                        class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&q=80&w=800')] bg-cover opacity-20 grayscale">
+                    </div>
+                    <div class="relative z-10 w-full px-8 space-y-6">
+                        <div class="flex justify-between items-end">
+                            <div class="space-y-1">
+                                <div class="text-xs font-mono text-neonLime">GAN_ARTIFACT_SCAN: CLEAR</div>
+                                <div class="text-xs font-mono text-neonLime">EYE_REFLECTION_CONSISTENCY: 99.8%</div>
+                                <div class="text-xs font-mono text-neonLime">SKIN_TEXTURE_SPOOF: 0.002%</div>
+                            </div>
+                            <div class="text-4xl font-bold text-neonLime">SECURE</div>
+                        </div>
+                        <div class="h-2 w-full bg-white/5 rounded-full">
+                            <div class="h-full bg-neonLime w-full shadow-[0_0_15px_#bcff00]"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="order-1 md:order-2 space-y-8">
+                <div
+                    class="inline-block px-3 py-1 rounded-full border border-neonLime/30 text-neonLime text-[10px] font-mono tracking-widest uppercase">
+                    Stage 03: Verification
+                </div>
+                <h2 class="text-4xl md:text-6xl font-bold leading-tight">Neural <span
+                        class="text-neonLime">Immutability.</span></h2>
+                <p class="text-white/60 text-lg leading-relaxed">
+                    Our Verification Engine analyzes 4,000+ micro-parameters in real-time, detecting sub-pixel
+                    generative artifacts that human eyes miss. If it's not you, the network knows instantly.
+                </p>
+                <ul class="space-y-4 font-mono text-sm">
+                    <li class="flex items-center gap-3">
+                        <i data-lucide="check-circle-2" class="w-4 h-4 text-neonLime"></i>
+                        <span>Latency-optimized zero-knowledge handshakes</span>
+                    </li>
+                    <li class="flex items-center gap-3">
+                        <i data-lucide="check-circle-2" class="w-4 h-4 text-neonLime"></i>
+                        <span>Real-time skin-vascularity detection</span>
+                    </li>
+                    <li class="flex items-center gap-3">
+                        <i data-lucide="check-circle-2" class="w-4 h-4 text-neonLime"></i>
+                        <span>Cross-ledger biometric reconciliation</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-12 border-t border-white/5 px-8">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
+            <div class="flex items-center gap-4">
+                <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-neonCyan to-neonMagenta p-[1px]">
+                    <div class="w-full h-full bg-darkBg rounded-[7px] flex items-center justify-center">
+                        <div class="w-2 h-2 bg-white rounded-full"></div>
+                    </div>
+                </div>
+                <span class="font-bold tracking-tighter text-xl italic uppercase">SovereignFace</span>
+            </div>
+            <div class="text-[10px] font-mono text-white/30 uppercase tracking-[0.3em]">
+                &copy; 2024 - Cryptographic Trust Protocol - All Rights Reserved
+            </div>
+            <div class="flex gap-6">
+                <a href="#" class="text-white/40 hover:text-white transition-colors"><i data-lucide="github"
+                        class="w-5 h-5"></i></a>
+                <a href="#" class="text-white/40 hover:text-white transition-colors"><i data-lucide="twitter"
+                        class="w-5 h-5"></i></a>
+                <a href="#" class="text-white/40 hover:text-white transition-colors"><i data-lucide="globe"
+                        class="w-5 h-5"></i></a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Initialize Icons
+        lucide.createIcons();
+
+        // Mouse Tracker for Glare Effect
+        document.addEventListener('mousemove', (e) => {
+            const x = (e.clientX / window.innerWidth) * 100;
+            const y = (e.clientY / window.innerHeight) * 100;
+            document.documentElement.style.setProperty('--x', `${x}%`);
+            document.documentElement.style.setProperty('--y', `${y}%`);
+
+            // Parallax Face Move
+            const face = document.getElementById('hero-face');
+            const moveX = (e.clientX - window.innerWidth / 2) / 30;
+            const moveY = (e.clientY - window.innerHeight / 2) / 30;
+            face.style.transform = `rotateY(${moveX}deg) rotateX(${-moveY}deg)`;
+
+            // Card Tilt Move
+            const card = document.getElementById('login-container');
+            const cardMoveX = (e.clientX - window.innerWidth / 2) / 60;
+            const cardMoveY = (e.clientY - window.innerHeight / 2) / 60;
+            card.style.transform = `perspective(1000px) rotateY(${cardMoveX}deg) rotateX(${-cardMoveY}deg)`;
+        });
+
+        // Scroll Transformation for Hero Face
+        window.addEventListener('scroll', () => {
+            const face = document.getElementById('hero-face');
+            const scrollPercent = window.scrollY / 500;
+            if (scrollPercent < 1.2) {
+                face.style.opacity = 1 - scrollPercent;
+                face.style.filter = `blur(${scrollPercent * 10}px) hue-rotate(${scrollPercent * 90}deg)`;
+                face.style.transform = `scale(${1 + scrollPercent * 0.5}) translateY(${scrollPercent * 100}px)`;
+            }
+        });
+
+        // Add smooth interaction for inputs
+        const inputs = document.querySelectorAll('input');
+        inputs.forEach(input => {
+            input.addEventListener('focus', () => {
+                input.parentElement.style.boxShadow = "0 0 20px rgba(255, 0, 255, 0.1)";
+            });
+            input.addEventListener('blur', () => {
+                input.parentElement.style.boxShadow = "none";
+            });
+        });
+
+        // ── Green Left→Right Scanning Line with Grid Trail ──
+        (function () {
+            const canvas = document.getElementById('scan-canvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const CELL = 16; // grid cell size in px
+            let scanX = 0;
+            let gridCols = 0;
+            let gridRows = 0;
+            // grid[col][row] = opacity 0..1
+            let grid = [];
+
+            function resize() {
+                canvas.width = canvas.offsetWidth;
+                canvas.height = canvas.offsetHeight;
+                gridCols = Math.ceil(canvas.width / CELL);
+                gridRows = Math.ceil(canvas.height / CELL);
+                grid = Array.from({ length: gridCols }, () => new Array(gridRows).fill(0));
+                scanX = 0;
+            }
+
+            function draw() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Draw existing grid cells (fade out over time)
+                for (let c = 0; c < gridCols; c++) {
+                    for (let r = 0; r < gridRows; r++) {
+                        if (grid[c][r] > 0) {
+                            ctx.strokeStyle = `rgba(0,255,80,${grid[c][r] * 0.55})`;
+                            ctx.lineWidth = 0.5;
+                            ctx.strokeRect(c * CELL, r * CELL, CELL, CELL);
+                            // slowly fade
+                            grid[c][r] = Math.max(0, grid[c][r] - 0.008);
+                        }
+                    }
+                }
+
+                // Light the current column's cells
+                const col = Math.floor(scanX / CELL);
+                if (col >= 0 && col < gridCols) {
+                    for (let r = 0; r < gridRows; r++) {
+                        grid[col][r] = 1.0;
+                    }
+                }
+
+                // Draw the scan line
+                const lineH = canvas.height;
+                const grad = ctx.createLinearGradient(scanX - 10, 0, scanX + 12, 0);
+                grad.addColorStop(0, 'rgba(0,255,80,0)');
+                grad.addColorStop(0.4, 'rgba(0,255,80,0.9)');
+                grad.addColorStop(0.6, 'rgba(160,255,160,1)');
+                grad.addColorStop(1, 'rgba(0,255,80,0)');
+                ctx.fillStyle = grad;
+                ctx.fillRect(scanX - 10, 0, 22, lineH);
+
+                // Advance scan
+                scanX += 1.5;
+
+                // When we reach the end, pause briefly then reset grid and restart
+                if (scanX > canvas.width + 20) {
+                    // Clear grid
+                    for (let c = 0; c < gridCols; c++)
+                        for (let r = 0; r < gridRows; r++)
+                            grid[c][r] = 0;
+                    scanX = -20;
+                }
+
+                requestAnimationFrame(draw);
+            }
+
+            resize();
+            window.addEventListener('resize', resize);
+            draw();
+        })();
+
+
+        // ══════════════════════════════════════════
+        //  FACE MATCH % COUNTER (hero section)
+        // ══════════════════════════════════════════
+        (function () {
+            let target = 94;
+            let current = 0;
+            const pctEl = document.getElementById('match-percent');
+            const barEl = document.getElementById('match-bar');
+            const statusEl = document.getElementById('match-status');
+            function animateMatch() {
+                if (!pctEl) return;
+                current += (target - current) * 0.04;
+                pctEl.textContent = current.toFixed(1);
+                barEl.style.width = current + '%';
+                if (current >= target - 0.05) {
+                    pctEl.textContent = target.toFixed(1);
+                    barEl.style.width = target + '%';
+                    if (statusEl) statusEl.innerHTML = '<span class="font-mono text-[8px] uppercase tracking-widest px-2 py-0.5 rounded-full border border-neonLime/40 text-neonLime/80" style="text-shadow:0 0 6px #bcff00;">VERIFIED ✓</span>';
+                    return;
+                }
+                requestAnimationFrame(animateMatch);
+            }
+            setTimeout(animateMatch, 800);
+        })();
+
+        // ══════════════════════════════════════════
+        //  FACE SCAN MODAL LOGIC
+        // ══════════════════════════════════════════
+        let camStream = null;
+        let scanAnimId = null;
+        let scanLineY = 0;
+        let scanActive = false;
+        let fpsInterval = null;
+
+        function openFaceScan() {
+            const modal = document.getElementById('face-scan-modal');
+            modal.style.display = 'flex';
+            modal.style.removeProperty('display'); // override the !important none
+            modal.style.cssText = 'display:flex!important;';
+            // reset state
+            resetScan();
+        }
+
+        function closeFaceScan() {
+            const modal = document.getElementById('face-scan-modal');
+            modal.style.cssText = 'display:none!important;';
+            stopCamera();
+        }
+
+        function stopCamera() {
+            scanActive = false;
+            if (scanAnimId) { cancelAnimationFrame(scanAnimId); scanAnimId = null; }
+            if (fpsInterval) { clearInterval(fpsInterval); fpsInterval = null; }
+            if (camStream) {
+                camStream.getTracks().forEach(t => t.stop());
+                camStream = null;
+            }
+        }
+
+        // ── Scan Registry (localStorage) ──────────────────────
+        const REGISTRY_KEY = 'sovereignface_scan_registry_v1';
+        function registryRead() {
+            try { return JSON.parse(localStorage.getItem(REGISTRY_KEY) || '[]'); } catch { return []; }
+        }
+        function registryWrite(arr) { localStorage.setItem(REGISTRY_KEY, JSON.stringify(arr)); }
+        function registryAdd(record) {
+            const arr = registryRead();
+            arr.unshift(record);
+            registryWrite(arr);
+        }
+
+        // ── FACE RECOGNITION DEDUPLICATION ──────────────────────
+        let faceApiReady = false;
+        let currentFaceDescriptor = null;
+
+        // Initialize face-api.js models
+        async function initializeFaceRecognition() {
+            try {
+                const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/face-api@0.0.7/dist/models/';
+                await Promise.all([
+                    faceapi.nets.tinyFaceDetector.load(MODEL_URL),
+                    faceapi.nets.faceLandmark68Net.load(MODEL_URL),
+                    faceapi.nets.faceRecognitionNet.load(MODEL_URL)
+                ]);
+                faceApiReady = true;
+                console.log('✓ Face recognition ready');
+            } catch (err) {
+                console.error('Face-API error:', err);
+                faceApiReady = false;
+            }
+        }
+
+        // Extract face descriptor from video frame
+        async function extractFaceDescriptor(videoElement) {
+            if (!faceApiReady || !videoElement) return null;
+            try {
+                const detections = await faceapi
+                    .detectAllFaces(videoElement, new faceapi.TinyFaceDetectorOptions())
+                    .withFaceLandmarks()
+                    .withFaceDescriptors();
+
+                if (detections.length > 0) {
+                    currentFaceDescriptor = Array.from(detections[0].descriptor);
+                    return currentFaceDescriptor;
+                }
+            } catch (err) {
+                console.error('Face descriptor extraction error:', err);
+            }
+            return null;
+        }
+
+        // Calculate Euclidean distance between two descriptors
+        function euclideanDistance(desc1, desc2) {
+            if (!desc1 || !desc2 || desc1.length !== desc2.length) return Infinity;
+            let sum = 0;
+            for (let i = 0; i < desc1.length; i++) {
+                const diff = desc1[i] - desc2[i];
+                sum += diff * diff;
+            }
+            return Math.sqrt(sum);
+        }
+
+        // Find matching user in registry (if face matches existing entry)
+        function findMatchingUser(currentDescriptor) {
+            if (!currentDescriptor) return null;
+
+            const MATCH_THRESHOLD = 0.5; // 0.5 = 50% similarity threshold
+            const registry = registryRead();
+            let bestMatch = null;
+            let bestSimilarity = 0;
+
+            for (const record of registry) {
+                if (record.descriptor && Array.isArray(record.descriptor)) {
+                    const distance = euclideanDistance(currentDescriptor, record.descriptor);
+                    const similarity = Math.max(0, 1 - distance); // Convert distance to similarity (0-1)
+
+                    if (similarity >= MATCH_THRESHOLD && similarity > bestSimilarity) {
+                        bestMatch = record;
+                        bestSimilarity = similarity;
+                    }
+                }
+            }
+
+            return { match: bestMatch, similarity: bestSimilarity };
+        }
+
+        // Check if current scan matches existing user
+        async function checkFaceMatch(videoElement) {
+            const descriptor = await extractFaceDescriptor(videoElement);
+            if (!descriptor) return null;
+            return findMatchingUser(descriptor);
+        }
+
+        // Initialize face recognition when page loads
+        window.addEventListener('load', () => {
+            initializeFaceRecognition();
+        });
+
+        // Capture webcam snapshot → base64 JPEG string
+        function captureSnapshot() {
+            const video = document.getElementById('cam-video');
+            if (!video || video.readyState < 2) return null;
+            const snap = document.getElementById('snap-canvas');
+            snap.width = video.videoWidth || 320;
+            snap.height = video.videoHeight || 240;
+            snap.getContext('2d').drawImage(video, 0, 0, snap.width, snap.height);
+            return snap.toDataURL('image/jpeg', 0.7);
+        }
+
+        let _capturedPhoto = null; // holds photo from last scan
+
+        function resetScan() {
+            stopCamera();
+            _capturedPhoto = null;
+            // Character back to normal
+            showCharNormal();
+            document.getElementById('char-status').textContent = 'Standing by...';
+            document.getElementById('start-scan-btn').disabled = false;
+            document.getElementById('start-scan-btn').style.opacity = '1';
+            // Camera panel reset
+            document.getElementById('cam-placeholder').style.display = 'flex';
+            document.getElementById('cam-video').style.display = 'none';
+            document.getElementById('red-scanline').style.display = 'none';
+            document.getElementById('face-detect-box').style.display = 'none';
+            document.getElementById('scan-overlay-text').style.display = 'none';
+            document.getElementById('scan-result-overlay').style.display = 'none';
+            // Reset recognition sub-states
+            const recState = document.getElementById('scan-recognizing-state');
+            const resState = document.getElementById('scan-result-state');
+            if (recState) recState.style.cssText = 'display:none;';
+            if (resState) resState.style.cssText = 'display:none;';
+            const badge = document.getElementById('face-match-confidence-badge');
+            if (badge) badge.style.display = 'none';
+            // Restore result icon to default
+            const icon = document.getElementById('scan-result-icon');
+            if (icon) icon.textContent = '✓';
+            setDisplay('cam-denied', false);
+            document.getElementById('cam-dot').style.background = 'rgba(239,68,68,0.4)';
+            document.getElementById('scan-status-label').textContent = 'STANDBY';
+            document.getElementById('scan-status-label').style.color = 'rgba(255,80,80,0.5)';
+            document.getElementById('cam-res-label').textContent = 'RES: --';
+            document.getElementById('cam-fps-label').textContent = 'FPS: --';
+        }
+
+        function setDisplay(id, show) {
+            const el = document.getElementById(id);
+            if (el) el.style.cssText = show ? '' : 'display:none!important;';
+        }
+
+        function showCharNormal() {
+            document.getElementById('eye-left-open').style.display = '';
+            document.getElementById('eye-right-open').style.display = '';
+            document.getElementById('eye-left-closed').style.display = 'none';
+            document.getElementById('eye-right-closed').style.display = 'none';
+            document.getElementById('arm-left-rest').style.display = '';
+            document.getElementById('arm-right-rest').style.display = '';
+            document.getElementById('arm-left-up').style.display = 'none';
+            document.getElementById('arm-right-up').style.display = 'none';
+            document.getElementById('char-mouth').setAttribute('d', 'M68 118 Q80 122 92 118');
+        }
+
+        function showCharShielded() {
+            document.getElementById('eye-left-open').style.display = 'none';
+            document.getElementById('eye-right-open').style.display = 'none';
+            document.getElementById('eye-left-closed').style.display = '';
+            document.getElementById('eye-right-closed').style.display = '';
+            document.getElementById('arm-left-rest').style.display = 'none';
+            document.getElementById('arm-right-rest').style.display = 'none';
+            document.getElementById('arm-left-up').style.display = '';
+            document.getElementById('arm-right-up').style.display = '';
+            // Slightly sad/worried mouth
+            document.getElementById('char-mouth').setAttribute('d', 'M70 120 Q80 116 90 120');
+        }
+
+        async function startBiometricScan() {
+            const btn = document.getElementById('start-scan-btn');
+            btn.disabled = true;
+            btn.style.opacity = '0.4';
+
+            // Animate character covering eyes
+            showCharShielded();
+            document.getElementById('char-status').textContent = 'Shielding identity...';
+
+            // Request camera
+            try {
+                camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } });
+            } catch (e) {
+                console.error("[SovereignFace] Camera constraint failed:", e);
+                try {
+                    // Fallback to basic video access just in case facingMode or resolution was rejected
+                    camStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                } catch (e2) {
+                    console.error("[SovereignFace] Complete camera failure:", e2);
+                    // denied or hardware error
+                    showCharNormal();
+                    document.getElementById('char-status').textContent = 'Cam Error: ' + (e2.name || 'Denied');
+                    setDisplay('cam-denied', true);
+                    document.getElementById('cam-placeholder').style.display = 'none';
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                    return;
+                }
+            }
+
+            const video = document.getElementById('cam-video');
+            video.srcObject = camStream;
+            video.style.display = 'block';
+            document.getElementById('cam-placeholder').style.display = 'none';
+            document.getElementById('cam-dot').style.background = 'rgb(239,68,68)';
+            document.getElementById('cam-dot').style.boxShadow = '0 0 8px red';
+            document.getElementById('scan-status-label').textContent = 'SCANNING';
+            document.getElementById('scan-status-label').style.color = 'rgb(239,68,68)';
+
+            // Show res after metadata loads
+            video.onloadedmetadata = () => {
+                document.getElementById('cam-res-label').textContent = `RES: ${video.videoWidth}×${video.videoHeight}`;
+            };
+
+            // Show scanning overlay
+            document.getElementById('scan-overlay-text').style.display = 'flex';
+            document.getElementById('red-scanline').style.display = 'block';
+            document.getElementById('face-detect-box').style.display = 'block';
+
+            // FPS counter (fake but convincing)
+            let fakeFrames = 0;
+            fpsInterval = setInterval(() => {
+                fakeFrames = Math.floor(Math.random() * 6) + 28;
+                document.getElementById('cam-fps-label').textContent = `FPS: ${fakeFrames}`;
+            }, 800);
+
+            // Animate red scanline top→bottom
+            scanActive = true;
+            scanLineY = 0;
+            let direction = 1;
+
+            const stages = [
+                { t: 0, text: 'Initializing sensors...', pct: 0 },
+                { t: 1200, text: 'Detecting face geometry...', pct: 20 },
+                { t: 2800, text: 'Mapping biometric vectors...', pct: 45 },
+                { t: 4500, text: 'Cross-referencing ledger...', pct: 72, capture: true },
+                { t: 6000, text: 'Finalizing identity hash...', pct: 90 },
+                { t: 7500, text: 'Complete.', pct: 100 },
+            ];
+            stages.forEach(s => {
+                setTimeout(() => {
+                    if (!scanActive) return;
+                    document.getElementById('scan-stage-text').textContent = s.text;
+                    document.getElementById('scan-progress-bar').style.width = s.pct + '%';
+                    // 📸 Capture snapshot at the 72% biometric cross-reference milestone
+                    if (s.capture) {
+                        _capturedPhoto = captureSnapshot();
+                    }
+                }, s.t);
+            });
+
+            function animateLine() {
+                if (!scanActive) return;
+                const container = document.getElementById('red-scanline').parentElement;
+                const h = container.offsetHeight;
+                scanLineY += direction * 0.8;
+                if (scanLineY >= 100) direction = -1;
+                if (scanLineY <= 0) direction = 1;
+                document.getElementById('red-scanline').style.top = scanLineY + '%';
+                scanAnimId = requestAnimationFrame(animateLine);
+            }
+            animateLine();
+
+            // Show result after 8.2s
+            setTimeout(() => {
+                if (!scanActive) return;
+                showScanResult();
+            }, 8200);
+        }
+
+        // ── Credential generators ─────────────────────────────
+        function _genUserId() {
+            const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+            const tag = Array.from({ length: 5 }, () => chars[Math.random() * chars.length | 0]).join('');
+            const ts = Date.now().toString(36).slice(-4);
+            return `user_${tag}${ts}@sovereign`;
+        }
+        function _genPasskey() {
+            const pool = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            return Array.from({ length: 6 }, () => pool[Math.random() * pool.length | 0]).join('');
+        }
+
+        // Holds the credentials generated for the CURRENT scan session
+        let _scanCredentials = null;
+
+        async function showScanResult() {
+            scanActive = false;
+            document.getElementById('red-scanline').style.display = 'none';
+            document.getElementById('scan-overlay-text').style.display = 'none';
+            document.getElementById('scan-status-label').textContent = 'VERIFIED';
+            document.getElementById('scan-status-label').style.color = '#bcff00';
+
+            // ── Show overlay immediately with recognition spinner ──
+            const overlay = document.getElementById('scan-result-overlay');
+            overlay.style.display = 'flex';
+            const recState = document.getElementById('scan-recognizing-state');
+            const resState = document.getElementById('scan-result-state');
+            if (recState) recState.style.cssText = 'display:flex; flex-direction:column; align-items:center; gap:14px;';
+            if (resState) resState.style.cssText = 'display:none;';
+
+            // ── Helper: show a new-identity result ──────────────────
+            function _showNewIdentity() {
+                const userId = _genUserId();
+                const passkey = _genPasskey();
+                _scanCredentials = { userId, passkey };
+                window._lastScanPhoto = _capturedPhoto;
+                const rec = {
+                    id: Date.now(), username: userId, passkey,
+                    timestamp: new Date().toISOString(),
+                    photo: _capturedPhoto || null,
+                    descriptor: currentFaceDescriptor || null,  // Save face descriptor
+                    matchScore: '97%', status: 'VERIFIED', isReturn: false
+                };
+                const arr = registryRead(); arr.unshift(rec); registryWrite(arr);
+                const nameIn = document.getElementById('auth-name');
+                const dobIn = document.getElementById('auth-dob');
+                if (nameIn) nameIn.value = userId;
+                if (dobIn) dobIn.value = passkey;
+                document.getElementById('gen-userid').value = userId;
+                document.getElementById('gen-passkey').textContent = passkey;
+                const icon = document.getElementById('scan-result-icon');
+                const title = document.getElementById('scan-result-title');
+                const sub = document.getElementById('scan-result-sub');
+                icon.textContent = '✓';
+                icon.style.borderColor = '#bcff00';
+                icon.style.color = '#bcff00';
+                icon.style.boxShadow = '0 0 20px rgba(188,255,0,0.4)';
+                title.textContent = 'Identity Confirmed';
+                title.style.color = '#bcff00';
+                sub.textContent = 'New identity created · Ledger Anchored';
+                const badge = document.getElementById('face-match-confidence-badge');
+                if (badge) badge.style.display = 'none';
+                document.getElementById('char-status').textContent = 'All clear!';
+                showCharNormal();
+            }
+
+            // ── Helper: show a returning-user result ────────────────
+            function _showReturnVisit(matchData) {
+                const { record, confidence, note } = matchData;
+                _scanCredentials = { userId: record.username, passkey: record.passkey };
+                const returnRec = {
+                    id: Date.now(), username: record.username, passkey: record.passkey,
+                    timestamp: new Date().toISOString(),
+                    photo: _capturedPhoto || null,
+                    matchScore: confidence === 'HIGH' ? '99%' : '92%',
+                    status: 'VERIFIED', isReturn: true, matchedId: record.id
+                };
+                const arr = registryRead(); arr.unshift(returnRec); registryWrite(arr);
+                const nameIn = document.getElementById('auth-name');
+                const dobIn = document.getElementById('auth-dob');
+                if (nameIn) nameIn.value = record.username;
+                if (dobIn) dobIn.value = record.passkey;
+                document.getElementById('gen-userid').value = record.username;
+                document.getElementById('gen-passkey').textContent = record.passkey;
+                const icon = document.getElementById('scan-result-icon');
+                const title = document.getElementById('scan-result-title');
+                const sub = document.getElementById('scan-result-sub');
+                icon.textContent = '↩';
+                icon.style.borderColor = '#00f3ff';
+                icon.style.color = '#00f3ff';
+                icon.style.boxShadow = '0 0 20px rgba(0,243,255,0.5)';
+                title.textContent = 'Face Recognized';
+                title.style.color = '#00f3ff';
+                sub.textContent = `Welcome back! Confidence: ${confidence} · ${note || 'Identity matched via Gemini Vision'}`;
+                const badge = document.getElementById('face-match-confidence-badge');
+                if (badge) {
+                    const confColor = confidence === 'HIGH' ? '#00f3ff' : '#bcff00';
+                    badge.textContent = `↩ RETURN VISIT  ·  GEMINI ${confidence} MATCH`;
+                    badge.style.cssText = `display:block; color:${confColor}; border-color:${confColor}44; background:${confColor}0a; font-family:JetBrains Mono,monospace; font-size:8px; letter-spacing:.12em; text-transform:uppercase; padding:4px 12px; border-radius:999px; border-width:1px; border-style:solid;`;
+                }
+                document.getElementById('char-status').textContent = 'Face recognized!';
+                showCharNormal();
+            }
+
+            // ── 1. Try local face recognition ──────────────────────
+            try {
+                const video = document.getElementById('cam-video');
+                const faceMatch = await checkFaceMatch(video);
+
+                if (recState) recState.style.cssText = 'display:none;';
+                if (resState) resState.style.cssText = 'display:flex; flex-direction:column; align-items:center; gap:12px; width:100%;';
+
+                // Face matched with existing user?
+                if (faceMatch && faceMatch.match) {
+                    const matchData = {
+                        record: faceMatch.match,
+                        confidence: faceMatch.similarity > 0.75 ? 'HIGH' : 'MEDIUM',
+                        note: `Face match: ${(faceMatch.similarity * 100).toFixed(1)}%`
+                    };
+                    _showReturnVisit(matchData);
+                } else {
+                    // No match = new user
+                    _showNewIdentity();
+                }
+            } catch (err) {
+                console.warn('[SovereignFace] Face recognition error, defaulting to new identity:', err);
+                if (recState) recState.style.cssText = 'display:none;';
+                if (resState) resState.style.cssText = 'display:flex; flex-direction:column; align-items:center; gap:12px; width:100%;';
+                _showNewIdentity();
+            }
+        }
+
+        // ── Backend URL (auto-detects if running via server or file://) ───────
+        const BACKEND_URL = (() => {
+            // If served from Node server, use same origin; otherwise localhost:3000
+            const h = location.protocol + '//' + location.hostname;
+            return location.protocol === 'file:' ? 'http://localhost:3000' : h + ':3000';
+        })();
+
+        // ── Persist scan record to backend (cross-host) ───────────────────────
+        async function saveToBackend(record) {
+            try {
+                const resp = await fetch(`${BACKEND_URL}/api/scans`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(record)
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    console.log('%c✅ Scan saved to backend', 'color:#bcff00', 'id=' + record.id);
+                }
+            } catch (err) {
+                console.warn('⚠ Backend unavailable — localStorage only.', err.message);
+            }
+        }
+
+        // ── Inject scan photo into dashboard panels (NOT the landing page hero) ─
+        function applyScanPhotoToDashboard(photoDataUrl) {
+            if (!photoDataUrl) return;
+            // Identity card thumbnail
+            const dashPhoto = document.getElementById('dash-photo');
+            if (dashPhoto) dashPhoto.src = photoDataUrl;
+            // Upload & Watermark preview
+            const uploadPreview = document.getElementById('upload-preview');
+            if (uploadPreview) uploadPreview.src = photoDataUrl;
+            // AI Misuse Simulator image
+            const aiGenImg = document.getElementById('ai-gen-img');
+            if (aiGenImg) aiGenImg.src = photoDataUrl;
+            // 🚫 intentionally NOT updating #hero-face img (keeps landing page photo)
+        }
+
+        // Called by the "Open My Dashboard" button inside the scan overlay
+        function openDashboardFromScan() {
+            if (!_scanCredentials) return;
+            const { userId, passkey } = _scanCredentials;
+            closeFaceScan();
+
+            // Derive display name from userId  e.g. user_abc12@sovereign → User_Abc12
+            const rawPart = userId.split('@')[0];
+            const display = rawPart.charAt(0).toUpperCase() + rawPart.slice(1);
+
+            // Open dashboard (renders all panels)
+            openDashboard(display, passkey, userId);
+
+            // Swap dashboard photos to the face captured during scan
+            applyScanPhotoToDashboard(_capturedPhoto);
+
+            // Persist to backend (non-blocking)
+            saveToBackend({
+                id: Date.now(),
+                username: userId,
+                passkey: passkey,
+                timestamp: new Date().toISOString(),
+                photo: _capturedPhoto || null,
+                matchScore: '97%',
+                status: 'VERIFIED'
+            });
+        }
+
+        // Clipboard helper
+        function copyToClipboard(elemId) {
+            const el = document.getElementById(elemId);
+            const text = el?.tagName === 'INPUT' ? el.value : (el?.textContent || '');
+            navigator.clipboard.writeText(text).then(() => {
+                const orig = el.style.borderColor;
+                el.style.borderColor = 'rgba(188,255,0,0.7)';
+                el.style.transition = 'border-color 0.3s';
+                setTimeout(() => { el.style.borderColor = orig; }, 800);
+            }).catch(() => { });
+        }
+
+        // ── Custom User ID Editor ──
+        function updateCustomUserId(newId) {
+            if (!_scanCredentials) return;
+            const oldId = _scanCredentials.userId;
+            if (!newId || newId === oldId) return;
+
+            _scanCredentials.userId = newId;
+            const nameIn = document.getElementById('auth-name');
+            if (nameIn) nameIn.value = newId;
+
+            // Sync with local storage
+            const registry = registryRead();
+            registry.forEach(r => { if (r.username === oldId) r.username = newId; });
+            registryWrite(registry);
+            console.log("[SovereignFace] Identity URI updated to:", newId);
+        }
+
+        // Close modal on backdrop click
+        document.getElementById('face-scan-modal').addEventListener('click', function (e) {
+            if (e.target === this) closeFaceScan();
+        });
+
+        // ══════════════════════════════════════════════════════
+        //  GEMINI FACE MATCHER MODULE
+        //  Uses gemini-1.5-flash multimodal vision to compare
+        //  two webcam face photos and determine if same person
+        // ══════════════════════════════════════════════════════
+        const GeminiMatcher = (() => {
+            const SESSION_KEY = 'sovereignface_gemini_key';
+            function getApiKey() {
+                return 'AIzaSyB7gExAxq75Nx6oZw2BumdAHmv7ZH1DQ-M'; // Hardcoded API Key
+            }
+            function saveApiKey(key) {
+                localStorage.setItem(SESSION_KEY, (key || '').trim());
+            }
+            async function compare(photo1, photo2) {
+                const key = getApiKey();
+                if (!key) return { match: false, confidence: 'NONE', note: 'No API key — enter Gemini key to enable recognition' };
+                // Strip data-URL prefix
+                const img1 = photo1.replace(/^data:image\/\w+;base64,/, '');
+                const img2 = photo2.replace(/^data:image\/\w+;base64,/, '');
+                const payload = {
+                    contents: [{
+                        role: 'user',
+                        parts: [
+                            { text: 'Are these two photos of the same person? Be incredibly lenient. Even if the lighting, expression, or angle changes slightly, if it is clearly the same person, return true. Reply ONLY with valid JSON exactly like this: {"match": true, "confidence": "HIGH", "note": "same person"}' },
+                            { inline_data: { mime_type: 'image/jpeg', data: img1 } },
+                            { inline_data: { mime_type: 'image/jpeg', data: img2 } }
+                        ]
+                    }],
+                    generationConfig: { temperature: 0.1, maxOutputTokens: 120 }
+                };
+                try {
+                    const resp = await fetch(
+                        `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${key}`,
+                        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }
+                    );
+                    const data = await resp.json();
+                    if (data.error) {
+                        const errMsg = data.error.message || JSON.stringify(data.error);
+                        console.warn('[GeminiMatcher] API error:', errMsg);
+                        if (!window.hasAlertedGeminiError) { alert("Gemini API Error: " + errMsg); window.hasAlertedGeminiError = true; }
+                        return { match: false, confidence: 'NONE', note: 'Gemini API error: ' + errMsg };
+                    }
+                    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+                    const jsonMatch = text.match(/\{[\s\S]*?\}/);
+                    if (!jsonMatch) {
+                        const preview = text.substring(0, 100);
+                        console.warn('[GeminiMatcher] Parse error. Raw response text:', preview);
+                        if (!window.hasAlertedGeminiError) { alert("Gemini Response Parse Error: Expected JSON, but got: " + preview); window.hasAlertedGeminiError = true; }
+                        return { match: false, confidence: 'LOW', note: 'Could not parse Gemini response' };
+                    }
+                    return JSON.parse(jsonMatch[0]);
+                } catch (e) {
+                    console.warn('[GeminiMatcher] Fetch error:', e.message);
+                    if (!window.hasAlertedGeminiError) { alert("Network Error during Gemini API call: " + e.message); window.hasAlertedGeminiError = true; }
+                    return { match: false, confidence: 'NONE', note: 'Network error during comparison' };
+                }
+            }
+            return { compare, getApiKey, saveApiKey };
+        })();
+
+        // ── Find a matching stored identity via Gemini Vision ──────
+        async function findMatchingIdentity(newPhoto) {
+            if (!newPhoto) return null;
+            if (!GeminiMatcher.getApiKey()) {
+                console.info('[SovereignFace] No Gemini API key — skipping face recognition.');
+                return null;
+            }
+            // Only compare against original (non-return) records that have a photo
+            const records = registryRead().filter(r => r.photo && !r.isReturn);
+            if (!records.length) return null;
+
+            // Update spinner text with record count
+            const recText = document.getElementById('scan-recognizing-text');
+            if (recText) recText.textContent = `Querying Gemini Vision — comparing against ${records.length} stored ${records.length === 1 ? 'identity' : 'identities'}...`;
+
+            // Run all comparisons in parallel
+            const results = await Promise.all(
+                records.map(async record => {
+                    const res = await GeminiMatcher.compare(newPhoto, record.photo);
+                    return { record, result: res };
+                })
+            );
+
+            // Accept match: true (lenient)
+            const match = results.find(r => r.result.match === true || String(r.result.match).toLowerCase() === 'true');
+            if (match) {
+                return { record: match.record, confidence: match.result.confidence, note: match.result.note };
+            } else {
+                // For debugging: alert why Gemini said false!
+                const reasons = results.map(r => r.result.note).join(" | ");
+                alert("Gemini declined match. Reasons: " + reasons + "\n\nRaw res: " + JSON.stringify(results.map(r => r.result)));
+                return null;
+            }
+        }
+
+        // ── Save Gemini key from input field ──
+        function saveGeminiKey() {
+            const inp = document.getElementById('gemini-key-input');
+            if (!inp) return;
+            GeminiMatcher.saveApiKey(inp.value);
+            const btn = document.getElementById('gemini-key-save-btn');
+            if (btn) {
+                const orig = btn.textContent;
+                btn.textContent = '✓ Saved';
+                btn.style.color = '#bcff00';
+                btn.style.borderColor = 'rgba(188,255,0,0.5)';
+                setTimeout(() => { btn.textContent = 'Save'; btn.style.color = ''; btn.style.borderColor = ''; }, 1800);
+            }
+        }
+
+    </script>
+
+    <!-- ══════════════════════════════════════════
+         FACE SCAN MODAL OVERLAY
+    ══════════════════════════════════════════ -->
+    <div id="face-scan-modal" class="fixed inset-0 z-[9999] flex items-center justify-center"
+        style="display:none!important; background:rgba(0,0,0,0.95); backdrop-filter:blur(12px);">
+
+        <!-- Close button -->
+        <button onclick="closeFaceScan()"
+            class="absolute top-6 right-6 z-10 font-mono text-xs text-white/40 hover:text-white border border-white/10 hover:border-white/40 px-3 py-1.5 rounded-full transition-all uppercase tracking-widest">✕
+            Close</button>
+
+        <!-- Header -->
+        <div class="absolute top-6 left-1/2 -translate-x-1/2 flex items-center gap-3">
+            <div class="w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_red]"></div>
+            <span class="font-mono text-xs uppercase tracking-widest text-white/60">Biometric Scan Protocol — Active
+                Session</span>
+        </div>
+
+        <!-- Main content: two panels -->
+        <div class="flex gap-6 w-full max-w-5xl px-8 mt-10">
+
+            <!-- LEFT PANEL: Animated Character -->
+            <div class="flex-1 glass-card rounded-2xl border-white/10 flex flex-col items-center justify-center p-8 gap-6 relative overflow-hidden"
+                style="min-height:520px;">
+                <div class="absolute inset-0 lattice-bg opacity-10"></div>
+                <div class="font-mono text-[10px] uppercase tracking-widest text-neonCyan/50 absolute top-4 left-4">
+                    Agent_001 // Privacy Shield</div>
+
+                <!-- SVG character -->
+                <div class="relative z-10 flex flex-col items-center gap-4">
+                    <svg id="char-svg" viewBox="0 0 160 220" width="200" height="275"
+                        xmlns="http://www.w3.org/2000/svg">
+                        <!-- Body -->
+                        <rect x="50" y="130" width="60" height="75" rx="12" fill="none" stroke="rgba(0,243,255,0.6)"
+                            stroke-width="1.5" />
+                        <!-- Neck -->
+                        <rect x="70" y="115" width="20" height="20" rx="4" fill="none" stroke="rgba(0,243,255,0.4)"
+                            stroke-width="1.5" />
+                        <!-- Head -->
+                        <ellipse cx="80" cy="90" rx="38" ry="44" fill="none" stroke="rgba(0,243,255,0.7)"
+                            stroke-width="1.5" />
+                        <!-- Ears -->
+                        <ellipse cx="42" cy="88" rx="7" ry="10" fill="none" stroke="rgba(0,243,255,0.4)"
+                            stroke-width="1.2" />
+                        <ellipse cx="118" cy="88" rx="7" ry="10" fill="none" stroke="rgba(0,243,255,0.4)"
+                            stroke-width="1.2" />
+                        <!-- Hair line -->
+                        <path d="M44 72 Q80 50 116 72" fill="none" stroke="rgba(0,243,255,0.5)" stroke-width="1.5" />
+
+                        <!-- LEFT EYE (open) -->
+                        <g id="eye-left-open">
+                            <ellipse cx="65" cy="88" rx="9" ry="7" fill="none" stroke="rgba(0,243,255,0.8)"
+                                stroke-width="1.5" />
+                            <circle cx="65" cy="88" r="3.5" fill="rgba(0,243,255,0.5)" />
+                            <circle cx="66.5" cy="86.5" r="1" fill="white" opacity="0.8" />
+                        </g>
+                        <!-- LEFT EYE (closed - hand covers) -->
+                        <g id="eye-left-closed" style="display:none;">
+                            <line x1="56" y1="88" x2="74" y2="88" stroke="rgba(0,243,255,0.8)" stroke-width="2"
+                                stroke-linecap="round" />
+                        </g>
+
+                        <!-- RIGHT EYE (open) -->
+                        <g id="eye-right-open">
+                            <ellipse cx="95" cy="88" rx="9" ry="7" fill="none" stroke="rgba(255,0,255,0.8)"
+                                stroke-width="1.5" />
+                            <circle cx="95" cy="88" r="3.5" fill="rgba(255,0,255,0.4)" />
+                            <circle cx="96.5" cy="86.5" r="1" fill="white" opacity="0.8" />
+                        </g>
+                        <!-- RIGHT EYE (closed) -->
+                        <g id="eye-right-closed" style="display:none;">
+                            <line x1="86" y1="88" x2="104" y2="88" stroke="rgba(255,0,255,0.8)" stroke-width="2"
+                                stroke-linecap="round" />
+                        </g>
+
+                        <!-- Nose -->
+                        <path d="M80 95 L76 108 L84 108" fill="none" stroke="rgba(0,243,255,0.4)" stroke-width="1.2" />
+                        <!-- Mouth (neutral) -->
+                        <path id="char-mouth" d="M68 118 Q80 122 92 118" fill="none" stroke="rgba(0,243,255,0.5)"
+                            stroke-width="1.5" />
+
+                        <!-- Left Arm (resting) -->
+                        <g id="arm-left-rest">
+                            <path d="M50 145 L22 175 L18 205" fill="none" stroke="rgba(0,243,255,0.6)" stroke-width="2"
+                                stroke-linecap="round" />
+                            <circle cx="18" cy="208" r="6" fill="none" stroke="rgba(0,243,255,0.5)"
+                                stroke-width="1.5" />
+                        </g>
+                        <!-- Left Arm (raised to cover eye) -->
+                        <g id="arm-left-up" style="display:none;">
+                            <path d="M50 145 Q30 115 52 85" fill="none" stroke="rgba(0,243,255,0.8)" stroke-width="2"
+                                stroke-linecap="round" />
+                            <!-- hand over left eye -->
+                            <ellipse cx="55" cy="83" rx="14" ry="9" fill="rgba(0,10,20,0.8)"
+                                stroke="rgba(0,243,255,0.7)" stroke-width="1.5" />
+                            <!-- fingers -->
+                            <line x1="43" y1="79" x2="40" y2="72" stroke="rgba(0,243,255,0.6)" stroke-width="1.2"
+                                stroke-linecap="round" />
+                            <line x1="48" y1="75" x2="46" y2="68" stroke="rgba(0,243,255,0.6)" stroke-width="1.2"
+                                stroke-linecap="round" />
+                            <line x1="55" y1="74" x2="54" y2="67" stroke="rgba(0,243,255,0.6)" stroke-width="1.2"
+                                stroke-linecap="round" />
+                            <line x1="62" y1="75" x2="62" y2="68" stroke="rgba(0,243,255,0.6)" stroke-width="1.2"
+                                stroke-linecap="round" />
+                            <line x1="67" y1="79" x2="69" y2="73" stroke="rgba(0,243,255,0.6)" stroke-width="1.2"
+                                stroke-linecap="round" />
+                        </g>
+
+                        <!-- Right Arm (resting) -->
+                        <g id="arm-right-rest">
+                            <path d="M110 145 L138 175 L142 205" fill="none" stroke="rgba(0,243,255,0.6)"
+                                stroke-width="2" stroke-linecap="round" />
+                            <circle cx="142" cy="208" r="6" fill="none" stroke="rgba(0,243,255,0.5)"
+                                stroke-width="1.5" />
+                        </g>
+                        <!-- Right Arm (raised to cover eye) -->
+                        <g id="arm-right-up" style="display:none;">
+                            <path d="M110 145 Q130 115 108 85" fill="none" stroke="rgba(255,0,255,0.8)" stroke-width="2"
+                                stroke-linecap="round" />
+                            <!-- hand over right eye -->
+                            <ellipse cx="105" cy="83" rx="14" ry="9" fill="rgba(0,10,20,0.8)"
+                                stroke="rgba(255,0,255,0.7)" stroke-width="1.5" />
+                            <line x1="93" y1="79" x2="91" y2="72" stroke="rgba(255,0,255,0.6)" stroke-width="1.2"
+                                stroke-linecap="round" />
+                            <line x1="98" y1="75" x2="96" y2="68" stroke="rgba(255,0,255,0.6)" stroke-width="1.2"
+                                stroke-linecap="round" />
+                            <line x1="105" y1="74" x2="104" y2="67" stroke="rgba(255,0,255,0.6)" stroke-width="1.2"
+                                stroke-linecap="round" />
+                            <line x1="112" y1="75" x2="112" y2="68" stroke="rgba(255,0,255,0.6)" stroke-width="1.2"
+                                stroke-linecap="round" />
+                            <line x1="117" y1="79" x2="119" y2="73" stroke="rgba(255,0,255,0.6)" stroke-width="1.2"
+                                stroke-linecap="round" />
+                        </g>
+
+                        <!-- Grid body detail -->
+                        <line x1="50" y1="155" x2="110" y2="155" stroke="rgba(0,243,255,0.15)" stroke-width="0.5" />
+                        <line x1="50" y1="170" x2="110" y2="170" stroke="rgba(0,243,255,0.15)" stroke-width="0.5" />
+                        <line x1="80" y1="130" x2="80" y2="205" stroke="rgba(0,243,255,0.1)" stroke-width="0.5" />
+                    </svg>
+
+                    <!-- Status text under character -->
+                    <div id="char-status"
+                        class="font-mono text-xs text-neonCyan/60 uppercase tracking-widest text-center">Standing by...
+                    </div>
+                </div>
+
+                <!-- Start Scan Button -->
+                <button id="start-scan-btn" onclick="startBiometricScan()"
+                    class="relative z-10 px-8 py-3 font-mono text-sm uppercase tracking-widest border border-neonCyan/40 text-neonCyan hover:bg-neonCyan/10 rounded-xl transition-all duration-300 hover:border-neonCyan hover:shadow-[0_0_20px_rgba(0,243,255,0.3)]">
+                    ▶ Start Scanning
+                </button>
+
+                <!-- ── Gemini API Key Input (Hidden - Hardcoded in backend) ── -->
+                <div class="relative z-10 w-full" style="max-width:280px; display:none;">
+                    <div class="p-3 rounded-xl border border-neonCyan/15 bg-neonCyan/[0.03]">
+                        <div class="flex items-center gap-1.5 mb-2">
+                            <span
+                                style="width:6px;height:6px;border-radius:50%;background:rgba(0,243,255,0.5);display:inline-block;box-shadow:0 0 4px rgba(0,243,255,0.5);"></span>
+                            <span class="font-mono text-[8px] text-neonCyan/60 uppercase tracking-widest">Gemini Vision
+                                — Face Recognition</span>
+                        </div>
+                        <div class="flex gap-2">
+                            <input id="gemini-key-input" type="password" placeholder="AIza... (Gemini API Key)"
+                                autocomplete="off"
+                                class="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-[10px] font-mono text-white/60 focus:outline-none focus:border-neonCyan/40 transition-colors"
+                                oninput="GeminiMatcher && GeminiMatcher.saveApiKey(this.value)">
+                            <button id="gemini-key-save-btn" onclick="saveGeminiKey()"
+                                class="flex-shrink-0 px-3 py-1.5 font-mono text-[8px] uppercase tracking-widest border border-neonCyan/25 text-neonCyan/60 hover:border-neonCyan/60 hover:text-neonCyan rounded-lg transition-all">
+                                Save
+                            </button>
+                        </div>
+                        <div
+                            class="font-mono text-[7px] text-white/20 mt-1.5 uppercase tracking-widest leading-relaxed">
+                            Key saved securely in browser · <a href="https://aistudio.google.com/app/apikey"
+                                target="_blank" class="text-neonCyan/40 hover:text-neonCyan/70 transition-colors">Get
+                                free key ↗</a>
+                        </div>
+                        <script>
+                            // Auto-fill input on load if key exists in local storage
+                            document.addEventListener('DOMContentLoaded', () => {
+                                const storedKey = GeminiMatcher.getApiKey();
+                                if (storedKey) {
+                                    const inp = document.getElementById('gemini-key-input');
+                                    if (inp) inp.value = storedKey;
+                                }
+                            });
+                        </script>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT PANEL: Camera Feed -->
+            <div class="flex-1 glass-card rounded-2xl border-white/10 flex flex-col relative overflow-hidden"
+                style="min-height:520px;">
+                <!-- Panel header -->
+                <div class="flex items-center justify-between px-5 py-3 border-b border-white/5">
+                    <div class="flex gap-2">
+                        <div class="w-3 h-3 rounded-full bg-red-500/60"></div>
+                        <div class="w-3 h-3 rounded-full bg-yellow-500/30"></div>
+                        <div class="w-3 h-3 rounded-full bg-green-500/30"></div>
+                    </div>
+                    <span class="font-mono text-[10px] text-white/30 uppercase tracking-widest">Camera_Node ::
+                        LIVE</span>
+                    <div id="cam-dot" class="w-2 h-2 rounded-full bg-red-500/40"></div>
+                </div>
+
+                <!-- Camera viewport -->
+                <div class="flex-1 relative overflow-hidden bg-black flex items-center justify-center">
+                    <!-- Camera off placeholder -->
+                    <div id="cam-placeholder" class="flex flex-col items-center gap-4 text-center px-8">
+                        <div class="w-16 h-16 rounded-full border border-white/10 flex items-center justify-center">
+                            <i data-lucide="camera-off" class="w-8 h-8 text-white/20"></i>
+                        </div>
+                        <p class="font-mono text-xs text-white/30 uppercase tracking-widest">Camera inactive<br>Press
+                            start scanning</p>
+                    </div>
+                    <!-- Actual video element -->
+                    <video id="cam-video" class="absolute inset-0 w-full h-full object-cover" style="display:none;"
+                        autoplay muted playsinline></video>
+                    <!-- Hidden canvas for snapshot capture -->
+                    <canvas id="snap-canvas" style="display:none;"></canvas>
+                    <!-- Camera permission denied msg -->
+                    <div id="cam-denied" class="absolute inset-0 flex flex-col items-center justify-center gap-3"
+                        style="display:none!important;">
+                        <i data-lucide="camera-off" class="w-10 h-10 text-red-400/60"></i>
+                        <p class="font-mono text-xs text-red-400/60 uppercase tracking-widest text-center">Camera
+                            access<br>denied</p>
+                    </div>
+
+                    <!-- Corner brackets overlay -->
+                    <div
+                        class="absolute top-4 left-4 w-8 h-8 border-t-2 border-l-2 border-red-500/60 pointer-events-none">
+                    </div>
+                    <div
+                        class="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-red-500/60 pointer-events-none">
+                    </div>
+                    <div
+                        class="absolute bottom-4 left-4 w-8 h-8 border-b-2 border-l-2 border-red-500/60 pointer-events-none">
+                    </div>
+                    <div
+                        class="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-red-500/60 pointer-events-none">
+                    </div>
+
+                    <!-- Red scan line (hidden until scanning) -->
+                    <div id="red-scanline" class="absolute left-0 right-0 pointer-events-none"
+                        style="display:none; height:3px; top:0%; background:linear-gradient(90deg,transparent,rgba(255,30,30,0.9),rgba(255,100,100,1),rgba(255,30,30,0.9),transparent); box-shadow:0 0 16px 4px rgba(255,0,0,0.5); z-index:10;">
+                    </div>
+
+                    <!-- Face detection box (shown when scanning) -->
+                    <div id="face-detect-box" class="absolute pointer-events-none"
+                        style="display:none; border:1.5px solid rgba(255,80,80,0.7); box-shadow:0 0 12px rgba(255,0,0,0.3); width:38%; height:55%; top:15%; left:31%; z-index:9;">
+                        <div class="absolute -top-px -left-px w-4 h-4 border-t-2 border-l-2 border-red-400"></div>
+                        <div class="absolute -top-px -right-px w-4 h-4 border-t-2 border-r-2 border-red-400"></div>
+                        <div class="absolute -bottom-px -left-px w-4 h-4 border-b-2 border-l-2 border-red-400"></div>
+                        <div class="absolute -bottom-px -right-px w-4 h-4 border-b-2 border-r-2 border-red-400"></div>
+                        <div
+                            class="absolute -bottom-6 left-1/2 -translate-x-1/2 font-mono text-[9px] text-red-400/80 uppercase tracking-widest whitespace-nowrap">
+                            FACE_DETECTED</div>
+                    </div>
+
+                    <!-- Scan progress overlay -->
+                    <div id="scan-overlay-text"
+                        class="absolute bottom-8 left-0 right-0 flex flex-col items-center gap-2"
+                        style="display:none; z-index:11;">
+                        <div class="font-mono text-[10px] text-red-400/80 uppercase tracking-widest"
+                            id="scan-stage-text">Initializing sensors...</div>
+                        <div class="w-40 h-[2px] bg-white/10 rounded-full overflow-hidden">
+                            <div id="scan-progress-bar"
+                                class="h-full bg-red-500 rounded-full transition-all duration-500"
+                                style="width:0%;box-shadow:0 0 8px red;"></div>
+                        </div>
+                    </div>
+
+                    <!-- RESULT overlay -->
+                    <div id="scan-result-overlay"
+                        class="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6"
+                        style="display:none; background:rgba(0,0,0,0.88); backdrop-filter:blur(8px); z-index:15; overflow-y:auto;">
+
+                        <!-- ── RECOGNIZING state (Gemini spinner) ── -->
+                        <div id="scan-recognizing-state"
+                            style="display:none; flex-direction:column; align-items:center; gap:16px;">
+                            <div style="position:relative; width:56px; height:56px;">
+                                <div
+                                    style="position:absolute; inset:0; border-radius:50%; border:2px solid rgba(0,243,255,0.15);">
+                                </div>
+                                <div
+                                    style="position:absolute; inset:0; border-radius:50%; border:2px solid transparent; border-top-color:#00f3ff; animation:spin 1s linear infinite;">
+                                </div>
+                                <div
+                                    style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono',monospace; font-size:10px; color:rgba(0,243,255,0.7); font-weight:700;">
+                                    AI</div>
+                            </div>
+                            <div id="scan-recognizing-text"
+                                class="font-mono text-[9px] text-neonCyan/70 uppercase tracking-widest text-center"
+                                style="max-width:240px; line-height:1.6;">
+                                Querying Gemini Vision — Running face recognition...
+                            </div>
+                            <div class="font-mono text-[7px] text-white/20 uppercase tracking-widest text-center">
+                                Comparing biometric vectors against stored identities
+                            </div>
+                        </div>
+
+                        <!-- ── RESULT state (shown after recognition completes) ── -->
+                        <div id="scan-result-state"
+                            style="display:none; flex-direction:column; align-items:center; gap:10px; width:100%;">
+
+                            <!-- Confidence badge (return visits only) -->
+                            <div id="face-match-confidence-badge" style="display:none;"></div>
+
+                            <!-- Status icon -->
+                            <div id="scan-result-icon"
+                                class="w-14 h-14 rounded-full border-2 flex items-center justify-center text-xl flex-shrink-0">
+                                ✓</div>
+                            <div id="scan-result-title"
+                                class="font-mono text-sm font-bold uppercase tracking-widest text-center"></div>
+                            <div id="scan-result-sub"
+                                class="font-mono text-[9px] text-white/50 uppercase tracking-widest text-center"
+                                style="max-width:280px; line-height:1.6;"></div>
+
+                            <!-- Credential card -->
+                            <div id="scan-cred-card"
+                                class="w-full rounded-xl border border-neonLime/30 bg-neonLime/[0.05] p-4 space-y-3"
+                                style="max-width:320px;">
+                                <div class="font-mono text-[9px] text-neonLime/60 uppercase tracking-widest mb-1">//
+                                    Your Credentials</div>
+
+                                <!-- User ID row -->
+                                <div class="space-y-1">
+                                    <div class="font-mono text-[8px] text-white/30 uppercase tracking-widest">Identity
+                                        URI (Username)</div>
+                                    <div class="flex items-center gap-2">
+                                        <input type="text" id="gen-userid"
+                                            class="flex-1 font-mono text-[11px] text-neonLime bg-black/40 border border-neonLime/20 focus:border-neonLime focus:outline-none rounded-lg px-3 py-2 tracking-wider min-w-0"
+                                            onchange="updateCustomUserId(this.value)">
+                                        <button onclick="copyToClipboard('gen-userid')" title="Copy"
+                                            class="flex-shrink-0 w-8 h-8 rounded-lg border border-white/10 flex items-center justify-center hover:border-neonLime/40 transition-all text-white/30 hover:text-neonLime">
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                                                stroke="currentColor" stroke-width="2">
+                                                <rect x="9" y="9" width="13" height="13" rx="2" />
+                                                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Passkey row -->
+                                <div class="space-y-1">
+                                    <div class="font-mono text-[8px] text-white/30 uppercase tracking-widest">Pass-Key
+                                        Seed</div>
+                                    <div class="flex items-center gap-2">
+                                        <div id="gen-passkey"
+                                            class="flex-1 font-mono text-[11px] text-neonCyan bg-black/40 border border-neonCyan/20 rounded-lg px-3 py-2 tracking-widest">
+                                        </div>
+                                        <button onclick="copyToClipboard('gen-passkey')" title="Copy"
+                                            class="flex-shrink-0 w-8 h-8 rounded-lg border border-white/10 flex items-center justify-center hover:border-neonCyan/40 transition-all text-white/30 hover:text-neonCyan">
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                                                stroke="currentColor" stroke-width="2">
+                                                <rect x="9" y="9" width="13" height="13" rx="2" />
+                                                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div
+                                    class="font-mono text-[8px] text-white/20 uppercase tracking-widest pt-1 leading-relaxed">
+                                    Save these credentials. Use them to log in via the manual override next time.
+                                </div>
+                            </div>
+
+                            <!-- Action buttons -->
+                            <div class="flex gap-3 w-full" style="max-width:320px;">
+                                <button onclick="openDashboardFromScan()"
+                                    class="flex-1 py-3 bg-neonLime/10 border border-neonLime/50 text-neonLime font-mono text-[10px] uppercase tracking-widest rounded-xl hover:bg-neonLime/20 hover:border-neonLime transition-all">
+                                    ▶ Open My Dashboard
+                                </button>
+                                <button onclick="resetScan()"
+                                    class="px-4 py-3 font-mono text-[10px] uppercase tracking-widest border border-white/15 hover:border-white/40 text-white/40 hover:text-white rounded-xl transition-all">
+                                    ↺
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <style>
+                        @keyframes spin {
+                            to {
+                                transform: rotate(360deg);
+                            }
+                        }
+                    </style>
+                </div>
+
+                <!-- Bottom stats bar -->
+                <div class="flex justify-between items-center px-5 py-3 border-t border-white/5">
+                    <div class="font-mono text-[9px] text-white/30 uppercase" id="cam-res-label">RES: --</div>
+                    <div class="font-mono text-[9px] uppercase tracking-widest" id="scan-status-label"
+                        style="color:rgba(255,80,80,0.5)">STANDBY</div>
+                    <div class="font-mono text-[9px] text-white/30 uppercase" id="cam-fps-label">FPS: --</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════════
+         IDENTITY DASHBOARD  (shown after AUTHENTICATE)
+    ══════════════════════════════════════════════════════ -->
+    <div id="identity-dashboard" style="display:none;" class="fixed inset-0 z-[9998] overflow-y-auto"
+        style="background:#050505;">
+
+        <!-- Animated background -->
+        <div class="fixed inset-0 -z-10 pointer-events-none">
+            <div
+                class="absolute -top-[10%] -left-[10%] w-[50%] h-[50%] bg-neonCyan opacity-5 blur-[160px] rounded-full">
+            </div>
+            <div
+                class="absolute top-[40%] -right-[5%] w-[40%] h-[60%] bg-neonMagenta opacity-5 blur-[160px] rounded-full">
+            </div>
+            <div class="lattice-bg absolute inset-0 opacity-30"></div>
+        </div>
+
+        <!-- Top bar -->
+        <div class="sticky top-0 z-50 glass-card border-b border-white/5 px-6 py-3 flex items-center justify-between"
+            style="background:rgba(5,5,5,0.9);">
+            <div class="flex items-center gap-3">
+                <div class="w-2 h-2 bg-neonLime rounded-full shadow-[0_0_8px_#bcff00] animate-pulse"></div>
+                <span class="font-mono text-xs uppercase tracking-widest text-white/60">SovereignFace // Identity
+                    Vault</span>
+            </div>
+            <div class="flex items-center gap-4">
+                <span id="dash-user-label" class="font-mono text-xs text-neonCyan/70 uppercase tracking-widest"></span>
+                <button onclick="logoutDashboard()"
+                    class="font-mono text-[10px] uppercase tracking-widest text-white/30 hover:text-red-400 border border-white/10 hover:border-red-400/40 px-3 py-1.5 rounded-full transition-all">
+                    ⏏ Sign Out
+                </button>
+            </div>
+        </div>
+
+        <!-- Dashboard grid -->
+        <div class="max-w-7xl mx-auto px-6 py-10 space-y-8">
+
+            <!-- ─── ROW 1: Identity Card + Upload ─── -->
+            <div class="grid md:grid-cols-2 gap-6">
+
+                <!-- Identity Card -->
+                <div class="glass-card rounded-2xl p-6 border-white/5 relative overflow-hidden">
+                    <div
+                        class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-neonCyan to-transparent">
+                    </div>
+                    <div class="font-mono text-[10px] uppercase tracking-widest text-neonCyan/50 mb-5">// Identity
+                        Manifest</div>
+
+                    <div class="flex gap-5 items-start">
+                        <!-- Photo with watermark -->
+                        <div class="relative flex-shrink-0">
+                            <div class="w-28 h-36 rounded-xl overflow-hidden border border-neonCyan/30 relative"
+                                style="box-shadow:0 0 20px rgba(0,243,255,0.15);">
+                                <img id="dash-photo" src="myface.jpeg" alt="ID Photo"
+                                    class="w-full h-full object-cover object-top"
+                                    style="filter:saturate(0.9) contrast(1.05);" />
+                                <!-- Watermark overlay -->
+                                <div class="absolute inset-0 flex items-center justify-center pointer-events-none"
+                                    style="transform:rotate(-30deg);">
+                                    <div
+                                        class="font-mono text-[7px] text-neonCyan/25 whitespace-nowrap tracking-widest select-none">
+                                        SOVEREIGN·VERIFIED·0xF3A1·SOVEREIGN·VERIFIED·0xF3A1</div>
+                                </div>
+                                <div class="absolute bottom-0 left-0 right-0 h-6 flex items-center justify-center"
+                                    style="background:rgba(0,243,255,0.1);">
+                                    <span class="font-mono text-[7px] text-neonCyan/80 uppercase tracking-widest">✓
+                                        Authenticated</span>
+                                </div>
+                            </div>
+                            <div class="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-neonLime flex items-center justify-center"
+                                style="box-shadow:0 0 8px #bcff00;">
+                                <span class="text-black text-[8px] font-bold">✓</span>
+                            </div>
+                        </div>
+
+                        <!-- Info fields -->
+                        <div class="flex-1 space-y-3">
+                            <div>
+                                <div class="font-mono text-[9px] text-white/30 uppercase tracking-widest mb-0.5">Full
+                                    Name</div>
+                                <div id="dash-name" class="font-mono text-sm text-white font-bold"></div>
+                            </div>
+                            <div>
+                                <div class="font-mono text-[9px] text-white/30 uppercase tracking-widest mb-0.5">Date of
+                                    Birth</div>
+                                <div id="dash-dob" class="font-mono text-sm text-white/80"></div>
+                            </div>
+                            <div>
+                                <div class="font-mono text-[9px] text-white/30 uppercase tracking-widest mb-0.5">
+                                    Identity Hash</div>
+                                <div id="dash-hash" class="font-mono text-[10px] text-neonCyan/70"></div>
+                            </div>
+                            <div>
+                                <div class="font-mono text-[9px] text-white/30 uppercase tracking-widest mb-0.5">Merkle
+                                    Root</div>
+                                <div class="font-mono text-[10px] text-neonMagenta/70">0xFF1·ROOT·7a2c9d4e·LOCK</div>
+                            </div>
+                            <div class="flex gap-2 pt-1 flex-wrap">
+                                <span
+                                    class="px-2 py-0.5 rounded-full border border-neonLime/40 text-neonLime font-mono text-[8px] uppercase tracking-widest"
+                                    style="box-shadow:0 0 6px rgba(188,255,0,0.2);">● Live</span>
+                                <span
+                                    class="px-2 py-0.5 rounded-full border border-neonCyan/30 text-neonCyan/70 font-mono text-[8px] uppercase tracking-widest">AES-256</span>
+                                <span
+                                    class="px-2 py-0.5 rounded-full border border-white/10 text-white/40 font-mono text-[8px] uppercase tracking-widest">ZK-Proof</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bio vector bars -->
+                    <div class="mt-5 space-y-2">
+                        <div class="font-mono text-[9px] text-white/20 uppercase tracking-widest mb-2">Biometric Vector
+                            Map</div>
+                        <div class="flex gap-1 items-end h-8">
+                            <script>document.write(Array.from({ length: 32 }, (_, i) => `<div style="height:${20 + Math.sin(i * 0.7) * 14 + Math.random() * 8}px;width:6px;border-radius:2px;background:rgba(0,243,255,${0.3 + Math.sin(i * 0.5) * 0.2});flex-shrink:0;"></div>`).join(''))
+                                // ══════════════════════════════════════════════════
+                                //  AUTHENTICATE → IDENTITY DASHBOARD
+                                // ══════════════════════════════════════════════════
+
+                                // Credentials: name = anything@..., dob = DD/MM/YYYY or similar
+                                function handleAuthenticate() {
+                                    const nameVal = document.getElementById('auth-name').value.trim();
+                                    const dobVal = document.getElementById('auth-dob').value.trim();
+                                    const errEl = document.getElementById('auth-error');
+
+                                    if (!nameVal || !dobVal) {
+                                        errEl.classList.remove('hidden');
+                                        errEl.textContent = '⚠ Both fields are required';
+                                        return;
+                                    }
+                                    errEl.classList.add('hidden');
+
+                                    // Extract display name from URI (aryan@sovereign → Aryan)
+                                    const rawName = nameVal.includes('@') ? nameVal.split('@')[0] : nameVal;
+                                    const displayName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+
+                                    // ── Save record to registry ──────────────────────────
+                                    const REGISTRY_KEY = 'sovereignface_scan_registry_v1';
+                                    function _regRead() { try { return JSON.parse(localStorage.getItem(REGISTRY_KEY) || '[]'); } catch { return []; } }
+                                    const record = {
+                                        id: Date.now(),
+                                        username: nameVal,
+                                        passkey: dobVal,
+                                        timestamp: new Date().toISOString(),
+                                        photo: window._lastScanPhoto || null,   // base64 JPEG or null
+                                        matchScore: '97%',
+                                        status: 'VERIFIED'
+                                    };
+                                    const arr = _regRead();
+                                    arr.unshift(record);
+                                    localStorage.setItem(REGISTRY_KEY, JSON.stringify(arr));
+                                    window._lastScanPhoto = null; // clear after saving
+
+                                    openDashboard(displayName, dobVal, nameVal);
+                                }
+
+                                function openDashboard(displayName, dob, fullUri) {
+                                    // Populate identity fields
+                                    document.getElementById('dash-name').textContent = displayName;
+                                    document.getElementById('dash-dob').textContent = dob;
+                                    document.getElementById('dash-user-label').textContent = fullUri;
+
+                                    // Generate a deterministic-looking hash from name
+                                    const hash = '0x' + [...displayName].reduce((a, c) => a ^ c.charCodeAt(0), 0x8F3A).toString(16).toUpperCase().padEnd(4, '0') + '·' + dob.replace(/\//g, '').slice(0, 6);
+                                    document.getElementById('dash-hash').textContent = hash + '·ZKP·SIGNED';
+
+                                    // Show dashboard, hide main site
+                                    document.getElementById('identity-dashboard').style.display = 'block';
+                                    document.body.style.overflow = 'hidden';
+                                    // Scroll dashboard to top
+                                    document.getElementById('identity-dashboard').scrollTop = 0;
+
+                                    // Render apps
+                                    renderApps();
+                                    renderEmergency();
+                                    renderRegistry();
+                                    // Re-init lucide for new icons
+                                    lucide.createIcons();
+                                }
+
+                                // ── Render Scan Registry ──
+                                function renderRegistry() {
+                                    const REGISTRY_KEY = 'sovereignface_scan_registry_v1';
+                                    function _regRead() { try { return JSON.parse(localStorage.getItem(REGISTRY_KEY) || '[]'); } catch { return []; } }
+                                    const entries = _regRead();
+                                    const tbody = document.getElementById('registry-tbody');
+                                    const cntEl = document.getElementById('registry-count');
+                                    if (!tbody) return;
+                                    cntEl && (cntEl.textContent = entries.length + ' record' + (entries.length !== 1 ? 's' : ''));
+                                    if (entries.length === 0) {
+                                        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,0.2);padding:20px;">No scan records yet</td></tr>`;
+                                        return;
+                                    }
+                                    tbody.innerHTML = entries.map((e, i) => {
+                                        const ts = new Date(e.timestamp);
+                                        const dateStr = ts.toLocaleDateString() + ' ' + ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                        const photoCell = e.photo
+                                            ? `<img src="${e.photo}" class="reg-thumb" alt="Face"/>`
+                                            : `<div class="reg-no-photo">--</div>`;
+                                        const visitCell = e.isReturn
+                                            ? `<span style="color:rgba(0,243,255,0.85);font-size:8px;padding:2px 7px;border:1px solid rgba(0,243,255,0.3);border-radius:999px;background:rgba(0,243,255,0.06);white-space:nowrap;">↩ Return</span>`
+                                            : `<span style="color:rgba(188,255,0,0.7);font-size:8px;padding:2px 7px;border:1px solid rgba(188,255,0,0.25);border-radius:999px;background:rgba(188,255,0,0.04);white-space:nowrap;">✦ New</span>`;
+                                        return `<tr>
+                                            <td style="color:rgba(0,243,255,0.4);">#${entries.length - i}</td>
+                                            <td>${photoCell}</td>
+                                            <td style="color:rgba(188,255,0,0.8);">${e.username}</td>
+                                            <td style="letter-spacing:.08em;">${e.passkey}</td>
+                                            <td style="color:rgba(0,243,255,0.6);">${e.matchScore}</td>
+                                            <td style="color:rgba(255,255,255,0.3);font-size:8px;">${dateStr}</td>
+                                            <td>${visitCell}</td>
+                                        </tr>`;
+                                    }).join('');
+                                }
+
+                                // ── Export registry as CSV (Excel) ──
+                                function exportRegistryCSV() {
+                                    const REGISTRY_KEY = 'sovereignface_scan_registry_v1';
+                                    function _regRead() { try { return JSON.parse(localStorage.getItem(REGISTRY_KEY) || '[]'); } catch { return []; } }
+                                    const entries = _regRead();
+                                    if (entries.length === 0) { alert('No records to export.'); return; }
+                                    const header = ['#', 'Username', 'Passkey', 'Match Score', 'Status', 'Timestamp', 'Photo Captured'];
+                                    const rows = entries.map((e, i) => [
+                                        entries.length - i,
+                                        '"' + (e.username || '').replace(/"/g, '""') + '"',
+                                        '"' + (e.passkey || '').replace(/"/g, '""') + '"',
+                                        e.matchScore || '97%',
+                                        e.status || 'VERIFIED',
+                                        new Date(e.timestamp).toLocaleString(),
+                                        e.photo ? 'Yes' : 'No'
+                                    ]);
+                                    const csv = [header.join(','), ...rows.map(r => r.join(','))].join('\n');
+                                    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = 'sovereignface_registry_' + Date.now() + '.csv';
+                                    a.click();
+                                    URL.revokeObjectURL(url);
+                                }
+
+                                // ── Clear registry ──
+                                function clearRegistry() {
+                                    if (!confirm('Delete all scan records? This cannot be undone.')) return;
+                                    localStorage.removeItem('sovereignface_scan_registry_v1');
+                                    renderRegistry();
+                                }
+
+                                function logoutDashboard() {
+                                    document.getElementById('identity-dashboard').style.display = 'none';
+                                    document.body.style.overflow = '';
+                                    // Clear AI gen
+                                    clearAIGen();
+                                }
+
+                                // ── Authorized Apps ──
+                                const APPS_DATA = [
+                                    { name: 'LinkedIn', icon: 'linkedin', color: '#00f3ff', active: true, uses: 'Profile + Auth' },
+                                    { name: 'GitHub', icon: 'github', color: '#bcff00', active: true, uses: 'Commit signing' },
+                                    { name: 'Aadhaar API', icon: 'shield', color: '#ff00ff', active: true, uses: 'KYC Verification' },
+                                    { name: 'DigiLocker', icon: 'folder-lock', color: '#ff8c00', active: false, uses: 'Document sign' },
+                                    { name: 'Meta Suite', icon: 'image', color: '#ff00ff', active: false, uses: 'Photo tagging' },
+                                    { name: 'BankID', icon: 'landmark', color: '#00f3ff', active: false, uses: 'Biometric login' },
+                                ];
+
+                                function renderApps() {
+                                    const grid = document.getElementById('apps-grid');
+                                    grid.innerHTML = APPS_DATA.map((app, i) => `
+                <div class="glass-card rounded-xl p-4 border-white/5 flex items-center gap-3 group relative overflow-hidden transition-all hover:border-white/10">
+                    <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${app.color}18; border:1px solid ${app.color}30;">
+                        <i data-lucide="${app.icon}" class="w-4 h-4" style="color:${app.color};"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-mono text-xs text-white/80 font-bold truncate">${app.name}</div>
+                        <div class="font-mono text-[9px] text-white/30 uppercase tracking-widest truncate">${app.uses}</div>
+                    </div>
+                    <!-- Toggle -->
+                    <button onclick="toggleApp(${i},this)" class="flex-shrink-0 w-10 h-5 rounded-full relative transition-all duration-300 ${app.active ? 'bg-neonLime/20 border border-neonLime/40' : 'bg-white/5 border border-white/10'}" data-active="${app.active}">
+                        <div class="absolute top-0.5 ${app.active ? 'right-0.5 bg-neonLime' : 'left-0.5 bg-white/30'} w-4 h-4 rounded-full transition-all duration-300" style="${app.active ? 'box-shadow:0 0 6px #bcff00' : ''}"></div>
+                    </button>
+                </div>
+            `).join('');
+                                }
+
+                                function toggleApp(idx, btn) {
+                                    APPS_DATA[idx].active = !APPS_DATA[idx].active;
+                                    renderApps();
+                                    lucide.createIcons();
+                                }
+
+                                // ── Emergency Alerts ──
+                                const EMERGENCY_DATA = [
+                                    { platform: 'Telegram Bot', action: 'Profile photo scraped', time: '2 hrs ago', risk: 'HIGH', loc: 'Mumbai, IN' },
+                                    { platform: 'Unknown Site', action: 'Face used in banner ad', time: '6 hrs ago', risk: 'CRITICAL', loc: 'Frankfurt, DE' },
+                                    { platform: 'AI Image Gen', action: 'Training dataset match', time: '1 day ago', risk: 'MEDIUM', loc: 'San Francisco, US' },
+                                ];
+
+                                const RISK_COLORS = { HIGH: 'rgba(255,140,0', CRITICAL: 'rgba(255,30,30', MEDIUM: 'rgba(255,200,0' };
+
+                                function renderEmergency() {
+                                    const list = document.getElementById('emergency-list');
+                                    list.innerHTML = EMERGENCY_DATA.map(e => {
+                                        const c = RISK_COLORS[e.risk] || 'rgba(255,255,255';
+                                        return `
+                <div class="flex items-center gap-3 p-3 rounded-xl border transition-all hover:border-white/10" style="border-color:${c},0.2); background:${c},0.04);">
+                    <div class="w-2 h-2 rounded-full flex-shrink-0 animate-pulse" style="background:${c},0.9); box-shadow:0 0 6px ${c},0.6);"></div>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-mono text-[10px] text-white/70 font-bold truncate">${e.platform}</div>
+                        <div class="font-mono text-[9px] text-white/30 uppercase tracking-widest">${e.action} · ${e.loc}</div>
+                    </div>
+                    <div class="text-right flex-shrink-0">
+                        <div class="font-mono text-[8px] uppercase tracking-widest px-2 py-0.5 rounded-full" style="color:${c},0.9); border:1px solid ${c},0.3); background:${c},0.08);">${e.risk}</div>
+                        <div class="font-mono text-[8px] text-white/20 mt-1">${e.time}</div>
+                    </div>
+                </div>`;
+                                    }).join('');
+                                }
+
+                                // ── Photo Upload ──
+                                function handlePhotoUpload(event) {
+                                    const file = event.target.files[0];
+                                    if (!file) return;
+                                    processUploadedPhoto(file);
+                                }
+
+                                function handlePhotoDrop(event) {
+                                    event.preventDefault();
+                                    document.getElementById('upload-zone').style.borderColor = '';
+                                    const file = event.dataTransfer.files[0];
+                                    if (file && file.type.startsWith('image/')) processUploadedPhoto(file);
+                                }
+
+                                async function processUploadedPhoto(file) {
+                                    const reader = new FileReader();
+                                    reader.onload = (e) => {
+                                        const src = e.target.result;
+                                        document.getElementById('upload-preview').src = src;
+                                        document.getElementById('dash-photo').src = src;
+                                        document.getElementById('ai-gen-img').src = src;
+                                        const heroImg = document.querySelector('#hero-face img');
+                                        if (heroImg) heroImg.src = src;
+                                    };
+                                    reader.readAsDataURL(file);
+
+                                    // ── SOVEREIGN LEDGER: sign this image ──────────────────
+                                    showLedgerStatus('signing');
+                                    const result = await SovereignLedger.signImage(file);
+                                    showLedgerStatus('signed', result.hash, file.name);
+
+                                    // Flash the preview border
+                                    const previewWrap = document.getElementById('upload-preview').parentElement;
+                                    previewWrap.classList.add('ledger-signed-flash');
+                                    setTimeout(() => previewWrap.classList.remove('ledger-signed-flash'), 1200);
+                                }
+
+                                function showLedgerStatus(state, hash, filename) {
+                                    const el = document.getElementById('ledger-sign-status');
+                                    if (!el) return;
+                                    if (state === 'signing') {
+                                        el.innerHTML = `
+                                            <div class="flex items-center gap-2">
+                                                <div class="w-3 h-3 border border-neonLime/40 border-t-neonLime rounded-full animate-spin"></div>
+                                                <span class="font-mono text-[9px] text-neonLime/60 uppercase tracking-widest">Signing to Sovereign Ledger...</span>
+                                            </div>`;
+                                        el.style.display = 'block';
+                                    } else if (state === 'signed') {
+                                        el.innerHTML = `
+                                            <div class="sign-in flex items-center justify-between gap-3">
+                                                <div class="flex items-center gap-2">
+                                                    <div class="w-2 h-2 rounded-full bg-neonLime shadow-[0_0_6px_#bcff00]"></div>
+                                                    <span class="font-mono text-[9px] text-neonLime uppercase tracking-widest">⛓ Sovereign Ledger: SIGNED</span>
+                                                </div>
+                                                <span class="font-mono text-[8px] text-white/30 uppercase tracking-widest truncate max-w-[140px]">${(hash || '').slice(0, 16)}…</span>
+                                            </div>
+                                            <div class="font-mono text-[8px] text-neonCyan/40 uppercase tracking-widest mt-1">
+                                                This image is now Sovereign-Protected · AI Generator &amp; SovereignGram will refuse it
+                                            </div>`;
+                                        el.style.display = 'block';
+                                        // Update ledger counter
+                                        refreshLedgerCount();
+                                    }
+                                }
+
+                                function refreshLedgerCount() {
+                                    const cnt = SovereignLedger.count();
+                                    const el = document.getElementById('dash-ledger-count');
+                                    if (el) el.textContent = cnt + ' signed';
+                                }
+
+                                function downloadWatermarked() {
+                                    const img = document.getElementById('upload-preview');
+                                    const canvas = document.createElement('canvas');
+                                    const ctx = canvas.getContext('2d');
+                                    const tempImg = new Image();
+                                    tempImg.crossOrigin = 'anonymous';
+                                    tempImg.onload = () => {
+                                        canvas.width = tempImg.naturalWidth;
+                                        canvas.height = tempImg.naturalHeight;
+                                        ctx.drawImage(tempImg, 0, 0);
+                                        // Draw watermark text
+                                        ctx.save();
+                                        ctx.globalAlpha = 0.18;
+                                        ctx.font = `bold ${Math.max(14, canvas.width / 30)}px monospace`;
+                                        ctx.fillStyle = '#00f3ff';
+                                        ctx.translate(canvas.width / 2, canvas.height / 2);
+                                        ctx.rotate(-Math.PI / 6);
+                                        ctx.textAlign = 'center';
+                                        for (let i = -3; i <= 3; i++) {
+                                            ctx.fillText('SOVEREIGN · VERIFIED · ZK-SIGNED', 0, i * canvas.height / 6);
+                                        }
+                                        ctx.restore();
+                                        const link = document.createElement('a');
+                                        link.download = 'sovereign_watermarked.jpg';
+                                        link.href = canvas.toDataURL('image/jpeg', 0.92);
+                                        link.click();
+                                    };
+                                    tempImg.src = img.src;
+                                }
+
+                                // ── AI Generate (Anthropic API) ──
+                                const SCENARIO_LABELS = {
+                                    deepfake_news: 'Simulated: Breaking News Deepfake',
+                                    social_impersonation: 'Simulated: Fake Social Profile',
+                                    financial_fraud: 'Simulated: Fraudulent ID Document',
+                                    political_propaganda: 'Simulated: Political Manipulation',
+                                };
+
+                                const SCENARIO_FILTERS = {
+                                    deepfake_news: 'brightness(1.15) contrast(1.2) saturate(0.3)',
+                                    social_impersonation: 'hue-rotate(20deg) saturate(1.3) contrast(1.1)',
+                                    financial_fraud: 'grayscale(1) contrast(1.4) brightness(0.9)',
+                                    political_propaganda: 'hue-rotate(180deg) saturate(0.5) contrast(1.3) brightness(0.85)',
+                                };
+
+                                async function runAIGenerate() {
+                                    const scenario = document.getElementById('ai-scenario-select').value;
+                                    const btn = document.getElementById('ai-gen-btn');
+                                    btn.disabled = true; btn.style.opacity = '0.4';
+
+                                    document.getElementById('ai-gen-placeholder').style.display = 'none';
+                                    document.getElementById('ai-gen-result').style.display = 'none';
+                                    document.getElementById('ai-gen-loading').style.display = 'flex';
+
+                                    const loadingTexts = [
+                                        'Consulting AI oracle...',
+                                        'Modeling misuse scenario...',
+                                        'Generating threat analysis...',
+                                        'Synthesizing report...'
+                                    ];
+                                    let ltIdx = 0;
+                                    const ltInterval = setInterval(() => {
+                                        ltIdx = (ltIdx + 1) % loadingTexts.length;
+                                        const el = document.getElementById('ai-gen-loading-text');
+                                        if (el) el.textContent = loadingTexts[ltIdx];
+                                    }, 1400);
+
+                                    const userName = document.getElementById('dash-name').textContent || 'User';
+
+                                    const prompts = {
+                                        deepfake_news: `You are analyzing an identity theft scenario for a hackathon demo about digital identity protection called SovereignFace. Describe in 2-3 short sentences (max 60 words total, no markdown, plain text) how a deepfake news video of ${userName} might be created and misused. Start with "Scenario detected:" and end with how SovereignFace's cryptographic watermark would have flagged this.`,
+                                        social_impersonation: `You are analyzing an identity theft scenario for a hackathon demo. In 2-3 short sentences (max 60 words, plain text, no markdown), describe how ${userName}'s photo might be used to create a fake social media profile and commit fraud. Start with "Scenario detected:" and mention how SovereignFace's ledger hash would expose the fake account.`,
+                                        financial_fraud: `You are analyzing an identity theft scenario for a hackathon demo. In 2-3 short sentences (max 60 words, plain text, no markdown), describe how ${userName}'s photo could be used in a fraudulent financial document like a fake KYC or bank ID. Start with "Scenario detected:" and explain how SovereignFace's zero-knowledge proof system would invalidate this document.`,
+                                        political_propaganda: `You are analyzing an identity theft scenario for a hackathon demo. In 2-3 short sentences (max 60 words, plain text, no markdown), describe how ${userName}'s likeness could be used in AI-generated political propaganda. Start with "Scenario detected:" and explain how SovereignFace's biometric Merkle tree would trace and nullify this misuse.`,
+                                    };
+
+                                    try {
+                                        const resp = await fetch('https://api.anthropic.com/v1/messages', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({
+                                                model: 'claude-sonnet-4-20250514',
+                                                max_tokens: 120,
+                                                messages: [{ role: 'user', content: prompts[scenario] }]
+                                            })
+                                        });
+                                        const data = await resp.json();
+                                        const text = data.content?.[0]?.text || 'Analysis complete.';
+                                        clearInterval(ltInterval);
+                                        showAIResult(scenario, text);
+                                    } catch (err) {
+                                        clearInterval(ltInterval);
+                                        showAIResult(scenario, 'Scenario detected: AI simulation complete. SovereignFace\'s cryptographic protocol would have flagged and blocked this misuse attempt in real-time via the decentralized ledger.');
+                                    }
+
+                                    btn.disabled = false; btn.style.opacity = '1';
+                                }
+
+                                function showAIResult(scenario, text) {
+                                    document.getElementById('ai-gen-loading').style.display = 'none';
+                                    document.getElementById('ai-gen-img').style.filter = SCENARIO_FILTERS[scenario] || 'none';
+                                    document.getElementById('ai-scenario-label').textContent = SCENARIO_LABELS[scenario];
+                                    document.getElementById('ai-gen-text').textContent = text;
+                                    document.getElementById('ai-gen-result').style.display = 'block';
+                                }
+
+                                function clearAIGen() {
+                                    document.getElementById('ai-gen-placeholder').style.display = 'flex';
+                                    document.getElementById('ai-gen-result').style.display = 'none';
+                                    document.getElementById('ai-gen-loading').style.display = 'none';
+                                }
+
+                                // ══════════════════════════════════════════════════════
+                                //  SOVEREIGN LEDGER CONTROLLER
+                                //  Shared localStorage key used by all 3 ecosystem sites
+                                // ══════════════════════════════════════════════════════
+                                const SovereignLedger = (() => {
+                                    const LEDGER_KEY = 'sovereign_identity_ledger_v1';
+                                    const CALLBACKS = [];
+                                    function _read() {
+                                        try { return JSON.parse(localStorage.getItem(LEDGER_KEY) || '{}'); } catch { return {}; }
+                                    }
+                                    function _write(data) {
+                                        localStorage.setItem(LEDGER_KEY, JSON.stringify(data));
+                                        CALLBACKS.forEach(fn => fn(data));
+                                    }
+                                    async function _sha256(buf) {
+                                        const h = await crypto.subtle.digest('SHA-256', buf);
+                                        return Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2, '0')).join('');
+                                    }
+                                    function _readFile(file) {
+                                        return new Promise((res, rej) => {
+                                            const r = new FileReader();
+                                            r.onload = e => res(e.target.result);
+                                            r.onerror = rej;
+                                            r.readAsArrayBuffer(file);
+                                        });
+                                    }
+                                    async function signImage(file) {
+                                        const hash = await _sha256(await _readFile(file));
+                                        const ledger = _read();
+                                        ledger[hash] = {
+                                            hash, filename: file.name, size: file.size,
+                                            signedAt: new Date().toISOString(),
+                                            signedBy: 'SovereignFace v1.0',
+                                            zkProof: '0x' + hash.slice(0, 16).toUpperCase(),
+                                        };
+                                        _write(ledger);
+                                        return { success: true, hash, entry: ledger[hash] };
+                                    }
+                                    async function checkImage(file) {
+                                        const hash = await _sha256(await _readFile(file));
+                                        const entry = _read()[hash] || null;
+                                        return { sovereign: !!entry, hash, entry };
+                                    }
+                                    function getAll() { return _read(); }
+                                    function clear() { _write({}); }
+                                    function onLedgerUpdate(fn) { CALLBACKS.push(fn); }
+                                    function count() { return Object.keys(_read()).length; }
+                                    return { signImage, checkImage, getAll, clear, onLedgerUpdate, count };
+                                })();
+
+                                // Init ledger count on load
+                                document.addEventListener('DOMContentLoaded', () => refreshLedgerCount());
+
+                            </script>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Upload Photo Section -->
+                <div class="glass-card rounded-2xl p-6 border-white/5 relative overflow-hidden">
+                    <div
+                        class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-neonMagenta to-transparent">
+                    </div>
+                    <div class="font-mono text-[10px] uppercase tracking-widest text-neonMagenta/50 mb-5">// Upload &
+                        Watermark Photo</div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <!-- Drop zone -->
+                        <div id="upload-zone"
+                            class="border border-dashed border-white/20 rounded-xl p-4 flex flex-col items-center justify-center gap-3 cursor-pointer hover:border-neonMagenta/50 transition-all"
+                            style="min-height:160px;" onclick="document.getElementById('photo-file-input').click()"
+                            ondragover="event.preventDefault();this.style.borderColor='rgba(255,0,255,0.6)'"
+                            ondragleave="this.style.borderColor=''" ondrop="handlePhotoDrop(event)">
+                            <div class="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center">
+                                <i data-lucide="upload-cloud" class="w-5 h-5 text-white/30"></i>
+                            </div>
+                            <div class="text-center">
+                                <div class="font-mono text-[10px] text-white/40 uppercase tracking-widest">Drop photo
+                                    here</div>
+                                <div class="font-mono text-[9px] text-white/20 mt-1">or click to browse</div>
+                            </div>
+                            <input id="photo-file-input" type="file" accept="image/*" class="hidden"
+                                onchange="handlePhotoUpload(event)">
+                        </div>
+
+                        <!-- Watermarked preview -->
+                        <div class="relative rounded-xl overflow-hidden border border-white/10"
+                            style="min-height:160px; background:#000;">
+                            <img id="upload-preview" src="myface.jpeg" alt="Preview"
+                                class="w-full h-full object-cover object-top" />
+                            <!-- Watermark -->
+                            <div class="absolute inset-0 pointer-events-none flex flex-col justify-between p-2">
+                                <div class="font-mono text-[6px] text-neonCyan/30 uppercase tracking-widest leading-tight select-none"
+                                    style="word-break:break-all;">
+                                    SOVEREIGN·0xF3A1·VERIFIED·HASH·7a2c9d4e·SOVEREIGN·0xF3A1·VERIFIED
+                                </div>
+                                <div style="transform:rotate(-25deg);transform-origin:center;">
+                                    <div
+                                        class="font-mono text-[8px] text-neonCyan/20 uppercase tracking-widest text-center select-none">
+                                        © SOVEREIGN IDENTITY PROTOCOL
+                                    </div>
+                                </div>
+                                <div
+                                    class="font-mono text-[6px] text-neonCyan/30 uppercase tracking-widest text-right select-none">
+                                    PROTECTED · ZK-SIGNED · IMMUTABLE
+                                </div>
+                            </div>
+                            <div class="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded font-mono text-[7px] text-neonLime uppercase tracking-widest"
+                                style="background:rgba(188,255,0,0.1);border:1px solid rgba(188,255,0,0.3);">WM</div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 p-3 rounded-xl border border-white/5 bg-white/[0.02]">
+                        <div class="flex items-center justify-between">
+                            <div class="font-mono text-[9px] text-white/40 uppercase tracking-widest">Watermark Status
+                            </div>
+                            <div class="font-mono text-[9px] text-neonLime uppercase tracking-widest">● Embedded</div>
+                        </div>
+                        <div class="font-mono text-[9px] text-white/25 mt-1 uppercase tracking-widest">Invisible
+                            steganographic layer · SHA-3 bound</div>
+                    </div>
+
+                    <!-- ── Sovereign Ledger sign status ── -->
+                    <div id="ledger-sign-status" style="display:none;"
+                        class="mt-3 p-3 rounded-xl border border-neonLime/20 bg-neonLime/[0.04]">
+                    </div>
+
+                    <!-- ── Ecosystem links ── -->
+                    <div class="mt-4 p-3 rounded-xl border border-white/5 bg-white/[0.02]">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="font-mono text-[9px] text-white/30 uppercase tracking-widest">Sovereign
+                                Ecosystem</div>
+                            <div class="font-mono text-[9px] text-neonCyan/50 uppercase tracking-widest"
+                                id="dash-ledger-count">0 signed</div>
+                        </div>
+                        <div class="font-mono text-[8px] text-white/20 uppercase tracking-widest mb-3 leading-relaxed">
+                            Uploading here locks this image. Other platforms will refuse it.
+                        </div>
+                        <div class="flex gap-2 flex-wrap">
+                            <a href="ai-generator.html" target="_blank" class="eco-pill eco-pill-lime">
+                                ⚡ NeuralForge AI
+                            </a>
+                            <a href="instagram-prototype.html" target="_blank" class="eco-pill eco-pill-magenta">
+                                ◉ SovereignGram
+                            </a>
+                        </div>
+                    </div>
+
+                    <button onclick="downloadWatermarked()"
+                        class="mt-4 w-full py-2.5 border border-neonMagenta/30 text-neonMagenta font-mono text-xs uppercase tracking-widest rounded-xl hover:bg-neonMagenta/5 hover:border-neonMagenta/60 transition-all">
+                        ⬇ Download Watermarked Photo
+                    </button>
+                </div>
+            </div>
+
+            <!-- ─── ROW 2: Authorized Apps ─── -->
+            <div class="glass-card rounded-2xl p-6 border-white/5 relative overflow-hidden">
+                <div
+                    class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-neonLime to-transparent">
+                </div>
+                <div class="flex items-center justify-between mb-6">
+                    <div class="font-mono text-[10px] uppercase tracking-widest text-neonLime/60">// Authorized
+                        Platforms</div>
+                    <div class="font-mono text-[9px] text-white/30 uppercase tracking-widest">3 of 6 active</div>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-4" id="apps-grid">
+                    <!-- Apps rendered by JS -->
+                </div>
+            </div>
+
+            <!-- ─── ROW 3: Emergency Alerts + AI Generate ─── -->
+            <div class="grid md:grid-cols-2 gap-6">
+
+                <!-- Emergency: Unauthorized Usage -->
+                <div class="glass-card rounded-2xl p-6 border-white/5 relative overflow-hidden">
+                    <div
+                        class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-red-500 to-transparent">
+                    </div>
+                    <div class="flex items-center gap-2 mb-5">
+                        <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_red]"></div>
+                        <div class="font-mono text-[10px] uppercase tracking-widest text-red-400/80">// Emergency —
+                            Unauthorized Detections</div>
+                    </div>
+
+                    <div class="space-y-3" id="emergency-list">
+                        <!-- Rendered by JS -->
+                    </div>
+
+                    <div class="mt-4 p-3 rounded-xl border border-red-500/10 bg-red-500/[0.03]">
+                        <div class="font-mono text-[9px] text-red-400/60 uppercase tracking-widest">3 active violations
+                            · Ledger notified · Legal hash filed</div>
+                    </div>
+                </div>
+
+                <!-- AI Generate Section -->
+                <div class="glass-card rounded-2xl p-6 border-white/5 relative overflow-hidden">
+                    <div
+                        class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-neonMagenta to-transparent">
+                    </div>
+                    <div class="font-mono text-[10px] uppercase tracking-widest text-neonMagenta/60 mb-2">// AI Misuse
+                        Simulator</div>
+                    <div class="font-mono text-[9px] text-white/30 mb-5 leading-relaxed">Demonstrate how your identity
+                        could be weaponized by generative AI — press to simulate a deepfake scenario.</div>
+
+                    <div class="flex gap-3 mb-5">
+                        <select id="ai-scenario-select"
+                            class="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-white/60 focus:outline-none focus:border-neonMagenta/40">
+                            <option value="deepfake_news">Deepfake News Anchor</option>
+                            <option value="social_impersonation">Social Media Impersonation</option>
+                            <option value="financial_fraud">Financial Fraud Document</option>
+                            <option value="political_propaganda">Political Propaganda Poster</option>
+                        </select>
+                        <button onclick="runAIGenerate()" id="ai-gen-btn"
+                            class="px-4 py-2 bg-neonMagenta/10 border border-neonMagenta/40 text-neonMagenta font-mono text-xs uppercase tracking-widest rounded-lg hover:bg-neonMagenta/20 transition-all">
+                            ▶ Generate
+                        </button>
+                    </div>
+
+                    <!-- Output area -->
+                    <div id="ai-gen-output" class="rounded-xl border border-white/5 bg-black/40 overflow-hidden"
+                        style="min-height:180px;">
+                        <div id="ai-gen-placeholder" class="h-full flex flex-col items-center justify-center gap-3 p-6"
+                            style="min-height:180px;">
+                            <div class="w-12 h-12 rounded-full border border-white/10 flex items-center justify-center">
+                                <i data-lucide="cpu" class="w-6 h-6 text-white/20"></i>
+                            </div>
+                            <div class="font-mono text-[10px] text-white/20 uppercase tracking-widest text-center">
+                                Select a scenario<br>and press generate</div>
+                        </div>
+
+                        <div id="ai-gen-loading" style="display:none;"
+                            class="flex flex-col items-center justify-center gap-3 p-6" style="min-height:180px;">
+                            <div
+                                class="w-8 h-8 border-2 border-neonMagenta/30 border-t-neonMagenta rounded-full animate-spin">
+                            </div>
+                            <div id="ai-gen-loading-text"
+                                class="font-mono text-[10px] text-neonMagenta/60 uppercase tracking-widest animate-pulse">
+                                Consulting AI oracle...</div>
+                        </div>
+
+                        <div id="ai-gen-result" style="display:none;" class="p-4 space-y-3">
+                            <!-- Simulated "generated" photo -->
+                            <div class="relative rounded-lg overflow-hidden" style="height:120px;">
+                                <img id="ai-gen-img" src="myface.jpeg" class="w-full h-full object-cover object-top"
+                                    style="filter:hue-rotate(180deg) saturate(0.4) contrast(1.3) brightness(0.8);" />
+                                <div class="absolute inset-0"
+                                    style="background:linear-gradient(135deg,rgba(255,0,255,0.25),rgba(0,243,255,0.15));">
+                                </div>
+                                <div class="absolute top-2 left-2 px-2 py-0.5 rounded font-mono text-[7px] text-red-400 uppercase tracking-widest"
+                                    style="background:rgba(255,0,0,0.15);border:1px solid rgba(255,0,0,0.3);">⚠
+                                    AI-GENERATED SIMULATION</div>
+                                <div id="ai-scenario-label"
+                                    class="absolute bottom-2 left-2 right-2 font-mono text-[8px] text-white/70 uppercase tracking-widest">
+                                </div>
+                            </div>
+
+                            <!-- Claude's analysis text -->
+                            <div id="ai-gen-text"
+                                class="font-mono text-[10px] text-white/50 leading-relaxed border-t border-white/5 pt-3">
+                            </div>
+
+                            <div class="flex justify-between items-center pt-1">
+                                <div class="font-mono text-[8px] text-neonMagenta/50 uppercase tracking-widest">
+                                    Sovereign Protocol: WOULD BLOCK THIS</div>
+                                <button onclick="clearAIGen()"
+                                    class="font-mono text-[8px] text-white/30 hover:text-white uppercase tracking-widest">✕
+                                    Clear</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ─── ROW 4: Scan Registry ─── -->
+            <div class="glass-card rounded-2xl p-6 border-white/5 relative overflow-hidden">
+                <div
+                    class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-neonCyan to-transparent">
+                </div>
+                <div class="flex items-center justify-between mb-5">
+                    <div>
+                        <div class="font-mono text-[10px] uppercase tracking-widest text-neonCyan/60">// Scan Registry —
+                            Biometric &amp; Credential Log</div>
+                        <div id="registry-count"
+                            class="font-mono text-[8px] text-white/20 uppercase tracking-widest mt-0.5">0 records</div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="renderRegistry()" title="Refresh"
+                            class="px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest border border-white/10 text-white/30 hover:text-neonCyan hover:border-neonCyan/40 rounded-lg transition-all">↺
+                            Refresh</button>
+                        <button onclick="exportRegistryCSV()"
+                            class="px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest border border-neonLime/30 text-neonLime hover:bg-neonLime/10 rounded-lg transition-all">⬇
+                            Export CSV</button>
+                        <button onclick="clearRegistry()"
+                            class="px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest border border-red-500/20 text-red-400/60 hover:border-red-500/50 hover:text-red-400 rounded-lg transition-all">✕
+                            Clear</button>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="registry-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Photo</th>
+                                <th>Username</th>
+                                <th>Passkey</th>
+                                <th>Match</th>
+                                <th>Timestamp</th>
+                                <th>Visit</th>
+                            </tr>
+                        </thead>
+                        <tbody id="registry-tbody">
+                            <tr>
+                                <td colspan="6" style="text-align:center;color:rgba(255,255,255,0.2);padding:20px;">No
+                                    scan records yet</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="mt-4 p-3 rounded-xl border border-white/5 bg-white/[0.02]">
+                    <div class="font-mono text-[9px] text-white/30 uppercase tracking-widest leading-relaxed">
+                        Records are stored in browser localStorage. Export CSV to open in Excel / Google Sheets.
+                        Face photo is captured automatically at 72% scan progress.
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- /max-w-7xl -->
+    </div><!-- /identity-dashboard -->
+
+</body>

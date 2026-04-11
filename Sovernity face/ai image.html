@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuralForge | AI Image Synthesis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono:wght@400;700&display=swap"
+        rel="stylesheet">
+    <style>
+        body {
+            background-color: #0a0a0c;
+            color: #fff;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .error-glitch {
+            text-shadow: 2px 0 red, -2px 0 cyan;
+            animation: glitch 0.3s infinite;
+        }
+
+        @keyframes glitch {
+            0% {
+                transform: translate(0)
+            }
+
+            20% {
+                transform: translate(-2px, 2px)
+            }
+
+            40% {
+                transform: translate(-2px, -2px)
+            }
+
+            60% {
+                transform: translate(2px, 2px)
+            }
+
+            80% {
+                transform: translate(2px, -2px)
+            }
+
+            100% {
+                transform: translate(0)
+            }
+        }
+    </style>
+</head>
+
+<body class="min-h-screen flex flex-col items-center justify-center p-6">
+
+    <div class="max-w-2xl w-full space-y-8">
+        <div class="text-center space-y-2">
+            <h1 class="text-4xl font-bold tracking-tighter text-[#bcff00]">NeuralForge <span
+                    class="text-white">v4.0</span></h1>
+            <p class="font-mono text-xs text-white/50 uppercase tracking-widest">Image-to-Image Generation Engine</p>
+        </div>
+
+        <div class="glass-panel rounded-2xl p-8 space-y-6">
+
+            <div class="space-y-2">
+                <label class="font-mono text-[10px] text-white/40 uppercase tracking-widest">Generation Prompt</label>
+                <textarea
+                    class="w-full bg-black/50 border border-white/10 rounded-xl p-4 text-sm focus:outline-none focus:border-[#bcff00] transition-colors"
+                    rows="3" placeholder="Cyberpunk portrait, neon lighting, highly detailed..."></textarea>
+            </div>
+
+            <div class="space-y-2">
+                <label class="font-mono text-[10px] text-white/40 uppercase tracking-widest">Reference Image</label>
+                <div id="drop-zone"
+                    class="border-2 border-dashed border-white/20 rounded-xl p-8 text-center hover:border-[#bcff00] hover:bg-[#bcff00]/5 transition-all cursor-pointer relative overflow-hidden"
+                    onclick="document.getElementById('file-input').click()">
+                    <input type="file" id="file-input" class="hidden" accept="image/*" onchange="handleFile(event)">
+                    <div id="upload-prompt" class="flex flex-col items-center gap-3">
+                        <i data-lucide="image-plus" class="w-8 h-8 text-white/30"></i>
+                        <span class="font-mono text-xs text-white/50 uppercase">Upload Source Image</span>
+                    </div>
+                    <img id="preview-img" class="absolute inset-0 w-full h-full object-cover hidden" alt="Preview">
+                </div>
+            </div>
+
+            <button id="generate-btn" onclick="processImage()"
+                class="w-full py-4 bg-[#bcff00] text-black font-bold font-mono uppercase tracking-widest rounded-xl hover:bg-white transition-colors disabled:opacity-50">
+                Execute Generation
+            </button>
+
+            <div id="blocked-msg"
+                class="hidden mt-6 p-4 rounded-xl border border-red-500 bg-red-500/10 text-center space-y-2">
+                <i data-lucide="shield-alert" class="w-8 h-8 text-red-500 mx-auto"></i>
+                <div class="font-mono text-sm text-red-500 font-bold error-glitch">GENERATION BLOCKED</div>
+                <div class="font-mono text-[10px] text-red-400 uppercase tracking-widest">SovereignFace Cryptographic
+                    Signature Detected. This asset is protected against generative manipulation.</div>
+            </div>
+
+            <div id="success-msg" class="hidden mt-6 text-center space-y-4">
+                <div class="w-full h-64 rounded-xl overflow-hidden relative">
+                    <img id="result-img" class="w-full h-full object-cover"
+                        style="filter: saturate(1.5) contrast(1.2) hue-rotate(45deg);">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-4">
+                        <span class="font-mono text-[10px] text-[#bcff00] uppercase tracking-widest">AI Generated
+                            Output</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+        let currentFile = null;
+
+        function handleFile(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            currentFile = file;
+
+            // Reset UI
+            document.getElementById('blocked-msg').classList.add('hidden');
+            document.getElementById('success-msg').classList.add('hidden');
+            document.getElementById('generate-btn').disabled = false;
+            
+            // Show preview
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                document.getElementById('upload-prompt').classList.add('hidden');
+                const preview = document.getElementById('preview-img');
+                preview.src = e.target.result;
+                preview.classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function processImage() {
+            if (!currentFile) return alert('Please upload an image first.');
+            
+            const btn = document.getElementById('generate-btn');
+            btn.disabled = true;
+            btn.textContent = 'ANALYZING...';
+
+            // 1. Check Sovereign Ledger
+            const isProtected = await checkSovereignLedger(currentFile);
+
+            setTimeout(() => {
+                btn.textContent = 'Execute Generation';
+                if (isProtected) {
+                    // BLOCKED
+                    document.getElementById('blocked-msg').classList.remove('hidden');
+                    document.getElementById('generate-btn').disabled = true;
+                } else {
+                    // ALLOWED
+                    document.getElementById('result-img').src = document.getElementById('preview-img').src;
+                    document.getElementById('success-msg').classList.remove('hidden');
+                }
+            }, 1000);
+        }
+
+        // --- Core Integration Logic ---
+        async function checkSovereignLedger(file) {
+            // Hash the file identically to SovereignFace protocol
+            const buffer = await file.arrayBuffer();
+            const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const fileHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+            // Read shared ledger from LocalStorage
+            const ledgerStr = localStorage.getItem('sovereign_identity_ledger_v1');
+            if (!ledgerStr) return false;
+            
+            try {
+                const ledger = JSON.parse(ledgerStr);
+                return !!ledger[fileHash]; // Returns true if hash exists in ledger
+            } catch(e) { return false; }
+        }
+    </script>
+</body>
+
+</html>

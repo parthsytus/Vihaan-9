@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SovereignGram</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            background-color: #fafafa;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        .feed-card {
+            background: white;
+            border: 1px solid #dbdbdb;
+            border-radius: 8px;
+        }
+
+        .gradient-text {
+            background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+    </style>
+</head>
+
+<body class="min-h-screen flex flex-col items-center py-8">
+
+    <div
+        class="fixed top-0 w-full bg-white border-b border-gray-300 z-50 px-4 py-3 flex justify-between items-center max-w-lg mx-auto left-0 right-0">
+        <h1 class="text-xl font-bold italic gradient-text">SovereignGram</h1>
+        <div class="flex gap-4">
+            <i data-lucide="heart" class="w-6 h-6"></i>
+            <i data-lucide="send" class="w-6 h-6"></i>
+        </div>
+    </div>
+
+    <div class="max-w-lg w-full mt-16 px-4 space-y-6">
+
+        <div class="feed-card p-4 space-y-4 shadow-sm">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-yellow-400 to-fuchsia-600 p-[2px]">
+                    <div class="w-full h-full bg-white rounded-full flex items-center justify-center">
+                        <i data-lucide="user" class="w-5 h-5 text-gray-500"></i>
+                    </div>
+                </div>
+                <input type="text" placeholder="Share a photo..."
+                    class="flex-1 bg-gray-100 rounded-full px-4 py-2 text-sm focus:outline-none" disabled>
+                <button onclick="document.getElementById('post-file').click()"
+                    class="text-blue-500 font-semibold text-sm">Upload</button>
+                <input type="file" id="post-file" class="hidden" accept="image/*" onchange="handlePost(event)">
+            </div>
+
+            <div id="violation-alert"
+                class="hidden bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-3">
+                <i data-lucide="alert-octagon" class="w-5 h-5 text-red-500 mt-0.5"></i>
+                <div>
+                    <h4 class="text-sm font-bold text-red-700">Upload Rejected</h4>
+                    <p class="text-xs text-red-600 mt-1">Our Trust & Safety engine detected a Sovereign Identity Ledger
+                        lock on this media. Posting is restricted.</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="feed-container" class="space-y-6">
+            <div class="feed-card overflow-hidden">
+                <div class="p-3 flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-full bg-gray-200"></div>
+                    <span class="font-semibold text-sm">hacker_demo</span>
+                </div>
+                <div class="w-full h-64 bg-gray-100 flex items-center justify-center">
+                    <span class="text-gray-400 text-sm">Previous post</span>
+                </div>
+                <div class="p-3 space-y-2">
+                    <div class="flex gap-4">
+                        <i data-lucide="heart" class="w-6 h-6"></i>
+                        <i data-lucide="message-circle" class="w-6 h-6"></i>
+                    </div>
+                    <p class="text-sm"><span class="font-semibold">hacker_demo</span> Testing out the new network!</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        async function handlePost(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // Reset UI
+            document.getElementById('violation-alert').classList.add('hidden');
+
+            // 1. Check Sovereign Ledger
+            const isProtected = await checkSovereignLedger(file);
+
+            if (isProtected) {
+                // BLOCKED: Show Instagram violation
+                document.getElementById('violation-alert').classList.remove('hidden');
+                e.target.value = ''; // Reset input
+            } else {
+                // ALLOWED: Create new post in feed
+                createPost(file);
+            }
+        }
+
+        function createPost(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const feed = document.getElementById('feed-container');
+                const newPost = document.createElement('div');
+                newPost.className = 'feed-card overflow-hidden';
+                newPost.innerHTML = `
+                    <div class="p-3 flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-yellow-400 to-fuchsia-600 p-[2px]">
+                            <div class="w-full h-full bg-white rounded-full"></div>
+                        </div>
+                        <span class="font-semibold text-sm">parthsins</span>
+                    </div>
+                    <img src="${e.target.result}" class="w-full max-h-96 object-cover">
+                    <div class="p-3 space-y-2">
+                        <div class="flex gap-4">
+                            <i data-lucide="heart" class="w-6 h-6 text-red-500 fill-red-500"></i>
+                            <i data-lucide="message-circle" class="w-6 h-6"></i>
+                        </div>
+                        <p class="text-sm"><span class="font-semibold">you</span> Just shitted! #Fuckboyforever</p>
+                    </div>
+                `;
+                feed.insertBefore(newPost, feed.firstChild);
+                lucide.createIcons();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // --- Core Integration Logic ---
+        async function checkSovereignLedger(file) {
+            // Hash the file identically to SovereignFace protocol
+            const buffer = await file.arrayBuffer();
+            const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const fileHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+            // Read shared ledger from LocalStorage
+            const ledgerStr = localStorage.getItem('sovereign_identity_ledger_v1');
+            if (!ledgerStr) return false;
+
+            try {
+                const ledger = JSON.parse(ledgerStr);
+                return !!ledger[fileHash];
+            } catch (e) { return false; }
+        }
+    </script>
+</body>
+
+</html>
